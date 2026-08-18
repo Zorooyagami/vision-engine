@@ -1,0 +1,22 @@
+{
+  "name": "vision-backend",
+  "version": "1.0.0",
+  "description": "Vision - customer behaviour analytics backend",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "mongoose": "^8.19.2",
+    "morgan": "^1.10.1",
+    "redis": "^5.10.0"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^11.2.0"
+  }
+}
