@@ -77,14 +77,7 @@ async function start() {
   // so connectMongo() intentionally exits the process on failure
   // (see config/mongo.js).
   await connectMongo();
-app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://dev-day-ecom.web.app'
-  ],
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}))
+
   app.listen(PORT, () => {
     console.log(`[server] Vision backend running on port ${PORT}`);
   });
