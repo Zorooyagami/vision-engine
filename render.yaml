@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: vision-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: MONGO_URI
+        sync: false # set manually in dashboard — your MongoDB Atlas connection string
+      - key: ALLOWED_ORIGINS
+        sync: false # set manually — comma-separated list of your deployed frontend URLs

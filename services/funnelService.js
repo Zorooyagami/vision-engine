@@ -10,8 +10,7 @@
    *
    * NOTE for later: once this query gets slow (lots of data), this is a
    * good candidate to run periodically as a background job and cache the
-   * result in Redis (see config/redis.js) instead of computing it live on
-   * every dashboard request.
+   * result instead of computing it live on every dashboard request.
    */
 
   const Event = require("../models/Event");
