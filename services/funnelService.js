@@ -14,6 +14,7 @@
    */
 
   const Event = require("../models/Event");
+  const User = require("../models/User");
 
   const FUNNEL_STAGES = ["product_view", "add_to_cart","remove_from_cart", "view_cart", "checkout_start", "purchase"];
 
@@ -183,4 +184,55 @@
   ]);
   return result;
 };
-  module.exports = { getFunnel, getLoyalCustomer, getGamers };
+
+async function getUsersByPeriod(period = '1m') {
+  const now = new Date()
+  const startDate = new Date(now)
+
+  const periods = {
+    '1d': () => startDate.setDate(now.getDate() - 1),
+    '1w': () => startDate.setDate(now.getDate() - 7),
+    '1m': () => startDate.setMonth(now.getMonth() - 1),
+    '3m': () => startDate.setMonth(now.getMonth() - 3),
+    '6m': () => startDate.setMonth(now.getMonth() - 6),
+  }
+
+  if (!periods[period]) {
+    throw new Error(`Unsupported period: ${period}`)
+  }
+
+  periods[period]()
+
+  // Get total users
+  const totalUsers = await User.countDocuments()
+
+  // Get users within selected period
+  const users = await User.find(
+    {
+      createdAt: {
+        $gte: startDate,
+        $lte: now,
+      },
+    },
+    {
+      _id: 0,
+      userId: 1,
+    }
+  ).lean()
+
+  const count = users.length
+
+  const percentage =
+    totalUsers > 0
+      ? Number(((count / totalUsers) * 100).toFixed(2))
+      : 0
+
+  return {
+    period,
+    count,
+    percentage,
+    totalUsers,
+    userIds: users.map(({ userId }) => userId),
+  }
+}
+  module.exports = { getFunnel, getLoyalCustomer, getGamers, getUsersByPeriod };

@@ -20,6 +20,7 @@ const { connectMongo } = require("./config/mongo");
 const eventsRoutes = require("./routes/events");
 const statsRoutes = require("./routes/stats");
 const authRoutes = require("./routes/auth");
+const recordRouter = require("./routes/record");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -33,7 +34,8 @@ app.set("trust proxy", 1);
 // ALLOWED_ORIGINS is a comma-separated list, e.g.:
 //   ALLOWED_ORIGINS=https://your-dashboard.onrender.com,https://your-demo-site.onrender.com
 // Falls back to common local dev ports if not set, so nothing breaks locally.
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5174,http://localhost:3000")
+const allowedOrigins = 'http://localhost:5173'
+// const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5174,http://localhost:3000,http://localhost:5173/")
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
@@ -65,7 +67,7 @@ app.get("/", (req, res) => {
 app.use("/api/events", eventsRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/auth", authRoutes);
-
+app.use('/api/record', recordRouter)
 // Basic health check — useful to confirm the server + DB connections are alive
 app.get("/health", (req, res) => {
   res.json({ status: "ok!!!" });

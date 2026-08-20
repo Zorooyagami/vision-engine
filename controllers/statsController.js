@@ -7,7 +7,7 @@
  * (Days 7-11 in the plan).
  */
 
-const { getFunnel, getLoyalCustomer, getGamers } = require("../services/funnelService");
+const { getFunnel, getLoyalCustomer, getGamers, getUsersByPeriod } = require("../services/funnelService");
 
 /**
  * GET /api/stats/funnel
@@ -31,9 +31,11 @@ const personas = async (req, res) => {
     // Placeholder for personas logic
     const { startDate, endDate, deviceType, trafficSource } = req.query;
 
-    const loyalUsersPersona = await getLoyalCustomer({ startDate, endDate, deviceType, trafficSource });
+    // const loyalUsersPersona = await getLoyalCustomer({ startDate, endDate, deviceType, trafficSource });
 
-    const gamers = await getGamers({ startDate, endDate, deviceType, trafficSource });
+    // const gamers = await getGamers({ startDate, endDate, deviceType, trafficSource });
+
+    const users = await getUsersByPeriod(req.query.period)
     return res.json({ message: "Personas endpoint is under construction.", data: [
     //   {
     //   persona: "Loyal Customers",
@@ -41,10 +43,10 @@ const personas = async (req, res) => {
     //   records: loyalUsersPersona[0],
     // },
      {
-      persona: "Gamers",
-      description: "Users who frequently purchase gaming products.",
-      records: gamers[0],
-    }] });
+      persona: "User",
+      description: "Users who frequently signed up.",
+      records: users,
+    },] });
   } catch (err) {
     console.error("[stats] personas error:", err.message);
     return res.status(500).json({ error: "failed to compute personas" });
