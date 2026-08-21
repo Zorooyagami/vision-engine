@@ -212,9 +212,77 @@ async function getEventSummary(req, res) {
   }
 }
 
+async function getPageHeatmaps(req, res) {
+  try {
+    const { pageId } = req.params;
+
+    const pagesMapping = [
+      'home',
+      'products',
+      'product_detail',
+      'cart'
+    ];
+
+    const page = pagesMapping[pageId];
+
+    if (!page) {
+      return res.status(400).json({
+        error: "invalid pageId"
+      });
+    }
+
+    // Convert page name to actual URL path
+    const pagePaths = {
+      home: '/',
+      products: '/products',
+      product_detail: '/product/',
+      cart: '/cart'
+    };
+
+    const path = pagePaths[page];
+    // delete all heatmaps
+  // const result = await Event.deleteMany({
+  //       event: {
+  //         $in: ["heatmap_move", "heatmap_click"]
+  //       }
+  //   });
+    const events = await Event.find({
+  event: {
+    $in: ['heatmap_move', 'heatmap_click']
+  },
+  path: page === 'product_detail'
+    ? { $regex: '^/products-detail/' }
+    : path
+})
+  .select({
+    _id: 1,
+    sessionId: 1,
+    userId: 1,
+    event: 1,
+    timestamp: 1,
+    path: 1,
+    properties: 1
+  })
+  .sort({ timestamp: 1 })
+  .lean();
+
+    return res.json({
+      page,
+      events
+    });
+
+  } catch (err) {
+    console.error("[events] heatmap error:", err);
+
+    return res.status(500).json({
+      error: "failed to fetch heatmap data"
+    });
+  }
+}
 
 module.exports = {
   ingestEvents,
   getRecentEvents,
   getEventSummary,
+  getPageHeatmaps
 };
