@@ -31,7 +31,7 @@ const eventSchema = new mongoose.Schema(
     path: String,
     referrer: String,
 
-    deviceType: String, // "mobile" | "tablet" | "desktop"
+    deviceInfo: {type: mongoose.Schema.Types.Mixed, default: {}}, // "mobile" | "tablet" | "desktop"
     browser: String,
     trafficSource: String, // "organic" | "paid" | "social" | "direct" | "referral"
     ip: String, // ← add this
