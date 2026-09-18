@@ -1,52 +1,13 @@
-// server/controllers/recordController.js — ingest handler
 const { decompressSync, strFromU8 } = require('fflate')
 const Session = require('../models/Session')
+const User = require('../models/User') // add this import
+
 async function ingestSession(req, res) {
-  try {
-    const compressed = new Uint8Array(req.body)
-    const decompressed = decompressSync(compressed)
-    const json = strFromU8(decompressed)
-    const { sessionId, userId, page, events } = JSON.parse(json)
-
-     console.log('[ingest] received:', {
-      sessionId,
-      userId,
-      page,
-      eventCount: events?.length,
-    }) // temporary — remove once fixed
-
-    if (!sessionId || !userId || !Array.isArray(events) || events.length === 0) {
-      console.log('[ingest] rejected — missing:', {
-        sessionId: !sessionId,
-        userId: !userId,
-        eventsArray: !Array.isArray(events),
-        eventsEmpty: events?.length === 0,
-      })
-      return res.sendStatus(400)
-    }
-
-    await Session.updateOne(
-      { sessionId },
-      {
-        $push: {
-          chunks: { page, data: Buffer.from(compressed), receivedAt: new Date() },
-        },
-        $setOnInsert: { sessionId, userId },
-      },
-      { upsert: true }
-    )
-
-    res.sendStatus(204)
-  } catch (err) {
-    console.error('[record/ingest] failed:', err.message)
-    res.sendStatus(400)
-  }
+  // ...unchanged...
 }
 
-// server/controllers/recordController.js
 async function listRecordedUsers(req, res) {
   try {
-    // group by userId, get session count + most recent activity per user
     const users = await Session.aggregate([
       {
         $group: {
@@ -55,6 +16,15 @@ async function listRecordedUsers(req, res) {
           lastActivity: { $max: '$updatedAt' },
         },
       },
+      {
+        $lookup: {
+          from: 'users',          // the actual Mongo collection name for the User model
+          localField: '_id',      // Session's grouped userId (a string)
+          foreignField: 'userId', // User.userId (also a string) — NOT _id/ObjectId
+          as: 'userDetails',
+        },
+      },
+      { $unwind: { path: '$userDetails', preserveNullAndEmptyArrays: true } },
       { $sort: { lastActivity: -1 } },
     ])
 
@@ -63,6 +33,8 @@ async function listRecordedUsers(req, res) {
         userId: u._id,
         sessionCount: u.sessionCount,
         lastActivity: u.lastActivity,
+        name: u.userDetails?.name || null,
+        email: u.userDetails?.email || null,
       }))
     )
   } catch (err) {
@@ -74,20 +46,27 @@ async function listRecordedUsers(req, res) {
 async function listUserSessions(req, res) {
   try {
     const { userId } = req.params
-    const sessions = await Session.find(
-      { userId },
-      { sessionId: 1, createdAt: 1, updatedAt: 1, chunks: 1 } // chunks needed just for page list below
-    ).sort({ createdAt: -1 })
 
-    res.json(
-      sessions.map((s) => ({
+    const [sessions, userDetails] = await Promise.all([
+      Session.find(
+        { userId },
+        { sessionId: 1, createdAt: 1, updatedAt: 1, chunks: 1 }
+      ).sort({ createdAt: -1 }),
+      User.findOne({ userId }, { name: 1, email: 1 }).lean(),
+    ])
+
+    res.json({
+      userId,
+      name: userDetails?.name || null,
+      email: userDetails?.email || null,
+      sessions: sessions.map((s) => ({
         sessionId: s.sessionId,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
-        pages: [...new Set(s.chunks.map((c) => c.page))], // e.g. ["/", "/products", "/product/12"]
+        pages: [...new Set(s.chunks.map((c) => c.page))],
         chunkCount: s.chunks.length,
-      }))
-    )
+      })),
+    })
   } catch (err) {
     console.error('[record/user-sessions] failed:', err.message)
     res.status(500).json({ error: 'Failed to list sessions' })
@@ -122,7 +101,7 @@ async function getSessionReplay(req, res) {
   }
 }
 
-// THIS is what was missing — without it, every destructured import in routes/record.js is undefined
+
 module.exports = {
   ingestSession,
   getSessionReplay,

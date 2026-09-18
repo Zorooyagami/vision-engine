@@ -21,6 +21,8 @@ const eventsRoutes = require("./routes/events");
 const statsRoutes = require("./routes/stats");
 const authRoutes = require("./routes/auth");
 const recordRouter = require("./routes/record");
+const analyticsRouter = require("./routes/analytics");
+const admin = require("./routes/admin");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -68,6 +70,8 @@ app.use("/api/events", eventsRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/auth", authRoutes);
 app.use('/api/record', recordRouter)
+app.use('/api/analytics', analyticsRouter)
+app.use('/api/admin', admin)
 // Basic health check — useful to confirm the server + DB connections are alive
 app.get("/health", (req, res) => {
   res.json({ status: "ok!!!" });
