@@ -9,47 +9,33 @@ function computeDuration(chunks) {
   return { totalSecs, label: `${Math.floor(totalSecs / 60)}m ${totalSecs % 60}s` };
 }
 
-async function listSessions({
-  period = '30d',
-  customRange,
-  personas = [],
-  search = '',
-  userId = null,
-}) {
+async function listSessions({ period = '30d', customRange, personas = [], search = '', userId = null }) {
   const { start, end } = resolveDateRange(period, customRange);
+  const match = { createdAt: { $gte: start, $lt: end } };
+  if (userId) match.userId = userId;
 
-  const match = {
-    createdAt: {
-      $gte: start,
-      $lt: end,
-    },
-  };
-
-  // If a specific user is selected, filter directly
-  if (userId) {
-    match.userId = userId;
-  }
-
-  // Only apply persona filter when we're NOT viewing one specific user
   if (!userId && personas.length) {
-    const personaFilter = await getPersonaUserIds(
-      personas,
-      start,
-      end
-    );
-
+    const personaFilter = await getPersonaUserIds(personas, start, end);
     if (personaFilter) {
       const ids = [...personaFilter.ids];
-
-      match.userId = {
-        $in: ids.length ? ids : ['__no_match__'],
-      };
+      match.userId = { $in: ids.length ? ids : ['__no_match__'] };
     }
   }
 
   const pipeline = [
+    { $match: match },
+    // CRITICAL: strip chunk binary data at the database level — never let
+    // raw compressed buffers leave Mongo for a list endpoint. This was the
+    // missing piece causing event-loop blocking under concurrent ingest.
     {
-      $match: match,
+      $project: {
+        sessionId: 1,
+        userId: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        'chunks.page': 1,
+        'chunks.receivedAt': 1,
+      },
     },
     {
       $lookup: {
@@ -59,22 +45,12 @@ async function listSessions({
         as: 'userDetails',
       },
     },
-    {
-      $unwind: {
-        path: '$userDetails',
-        preserveNullAndEmptyArrays: true,
-      },
-    },
-    {
-      $sort: {
-        createdAt: -1,
-      },
-    },
+    { $unwind: { path: '$userDetails', preserveNullAndEmptyArrays: true } },
+    { $sort: { createdAt: -1 } },
   ];
 
   if (search) {
     const re = new RegExp(search, 'i');
-
     pipeline.push({
       $match: {
         $or: [
@@ -90,15 +66,7 @@ async function listSessions({
 
   return sessions.map((s) => {
     const duration = computeDuration(s.chunks);
-
-    const pages = [
-      ...new Set(
-        (s.chunks || [])
-          .map((c) => c.page)
-          .filter(Boolean)
-      ),
-    ];
-
+    const pages = [...new Set((s.chunks || []).map((c) => c.page).filter(Boolean))];
     return {
       sessionId: s.sessionId,
       userId: s.userId,
@@ -113,7 +81,7 @@ async function listSessions({
     };
   });
 }
-// New: group sessions by user for the top-level list
+
 async function listRecordedUsers({ period = '30d', customRange, personas = [], search = '' }) {
   const allSessions = await listSessions({ period, customRange, personas, search });
 
@@ -137,4 +105,5 @@ async function listRecordedUsers({ period = '30d', customRange, personas = [], s
 
   return [...byUser.values()].sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
 }
+
 module.exports = { listSessions, listRecordedUsers };
