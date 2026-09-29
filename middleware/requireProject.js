@@ -1,3 +1,4 @@
+// vision-engine/middleware/requireProject.js
 const Project = require('../models/Project');
 
 function extractProjectId(req) {

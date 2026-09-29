@@ -77,7 +77,7 @@ async function login(req, res) {
 
     const projectId = req.projectId || null;
     const normalizedEmail = normalizeEmail(email);
-    const user = await User.findOne({ projectId, email: normalizedEmail });
+    const user = await User.findOne({ email: normalizedEmail });
     const valid = user ? await verifyPassword(password, user.password) : false;
 
     if (!valid) return res.status(401).json({ error: 'invalid email or password' });
