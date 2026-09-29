@@ -1,261 +1,127 @@
-// services/analyticsService.js
-const Event = require("../models/Event");
-// core metrics for a single time window/persona — shared by current + previous period calcs
+const Event = require('../models/Event');
+const { normalizeDevice } = require('./filterHelpers');
+
 async function coreMetrics(match, deviceType = 'all') {
-const deviceTypeMap = {
-  desktop: 'Desktop',
-  mobile: 'Mobile',
-  tablet: 'Tablet',
-}
+  const normalizedDevice = deviceType && String(deviceType).toLowerCase() !== 'all'
+    ? normalizeDevice(deviceType)
+    : null;
+  const deviceMatch = normalizedDevice
+    ? { ...match, 'deviceInfo.deviceType': normalizedDevice }
+    : match;
 
-const normalizedDeviceType =
-  deviceTypeMap[deviceType?.toLowerCase()] || 'all'
-
-const deviceMatch =
-  normalizedDeviceType !== 'all'
-    ? {
-        ...match,
-        'deviceInfo.deviceType': normalizedDeviceType,
-      }
-    : match
-
-  const [purchaseAgg] = await Event.aggregate([
+  const [result] = await Event.aggregate([
+    { $match: deviceMatch },
     {
-      $match: {
-        ...deviceMatch,
-        event: 'purchase',
-      },
-    },
-    {
-      $group: {
-        _id: null,
-        revenue: {
-          $sum: {
-            $toDouble: '$properties.total',
+      $facet: {
+        purchases: [
+          { $match: { event: 'purchase' } },
+          {
+            $group: {
+              _id: null,
+              revenue: {
+                $sum: {
+                  $convert: { input: '$properties.total', to: 'double', onError: 0, onNull: 0 },
+                },
+              },
+              purchaseCount: { $sum: 1 },
+            },
           },
-        },
-        purchaseCount: {
-          $sum: 1,
-        },
+        ],
+        sessions: [
+          { $group: { _id: '$sessionId' } },
+          { $count: 'count' },
+        ],
+        users: [
+          { $match: { userId: { $ne: null } } },
+          { $group: { _id: '$userId' } },
+          { $count: 'count' },
+        ],
       },
     },
-  ])
+  ]);
 
-  const [activityAgg] = await Event.aggregate([
-    {
-      $match: deviceMatch,
-    },
-    {
-      $group: {
-        _id: null,
-        sessionIds: {
-          $addToSet: '$sessionId',
-        },
-        userIds: {
-          $addToSet: '$userId',
-        },
-      },
-    },
-  ])
-
-  const revenue = purchaseAgg?.revenue || 0
-  const purchaseCount = purchaseAgg?.purchaseCount || 0
-  const sessionCount = activityAgg?.sessionIds?.length || 0
-  const activeUsers =
-    activityAgg?.userIds?.filter(Boolean).length || 0
+  const revenue = result?.purchases?.[0]?.revenue || 0;
+  const purchaseCount = result?.purchases?.[0]?.purchaseCount || 0;
+  const sessionCount = result?.sessions?.[0]?.count || 0;
+  const activeUsers = result?.users?.[0]?.count || 0;
 
   return {
     revenue: Number(revenue.toFixed(2)),
     activeUsers,
-    conversionRate:
-      sessionCount > 0
-        ? Number(((purchaseCount / sessionCount) * 100).toFixed(2))
-        : 0,
-    avgOrderValue:
-      purchaseCount > 0
-        ? Number((revenue / purchaseCount).toFixed(2))
-        : 0,
-  }
+    conversionRate: sessionCount
+      ? Number(((purchaseCount / sessionCount) * 100).toFixed(2))
+      : 0,
+    avgOrderValue: purchaseCount
+      ? Number((revenue / purchaseCount).toFixed(2))
+      : 0,
+  };
 }
 
 function pctChange(current, previous) {
-  if (previous === 0) {
-    return current === 0 ? 0 : null
-  }
-
-  return Number(
-    (((current - previous) / previous) * 100).toFixed(1)
-  )
+  if (previous === 0) return current === 0 ? 0 : null;
+  return Number((((current - previous) / previous) * 100).toFixed(1));
 }
 
 async function getKPIs(req, res) {
-  
   try {
-    const {
-      period,
-      persona,
-      range,
-      baseMatch,
-      prevMatch,
-    } = req.analytics
-const deviceType = req.query.deviceType || 'all'
-console.log('[analytics/kpis] deviceType:', deviceType)
-    const current = await coreMetrics(
-      baseMatch,
-      deviceType
-    )
-
-    const previous = prevMatch
-      ? await coreMetrics(
-          prevMatch,
-          deviceType
-        )
-      : null
+    const { period, persona, range, baseMatch, prevMatch } = req.analytics;
+    const deviceType = req.query.deviceType || 'all';
+    const [current, previous] = await Promise.all([
+      coreMetrics(baseMatch, deviceType),
+      prevMatch ? coreMetrics(prevMatch, deviceType) : Promise.resolve(null),
+    ]);
 
     res.json({
       period,
       persona,
-      deviceType: deviceType || 'all',
+      deviceType,
       range: range || 'all-time',
-
       kpis: {
-        revenue: {
-          value: current.revenue,
-          change: previous
-            ? pctChange(
-                current.revenue,
-                previous.revenue
-              )
-            : null,
-        },
-
-        activeUsers: {
-          value: current.activeUsers,
-          change: previous
-            ? pctChange(
-                current.activeUsers,
-                previous.activeUsers
-              )
-            : null,
-        },
-
-        conversionRate: {
-          value: current.conversionRate,
-          change: previous
-            ? pctChange(
-                current.conversionRate,
-                previous.conversionRate
-              )
-            : null,
-        },
-
-        avgOrderValue: {
-          value: current.avgOrderValue,
-          change: previous
-            ? pctChange(
-                current.avgOrderValue,
-                previous.avgOrderValue
-              )
-            : null,
-        },
+        revenue: { value: current.revenue, change: previous ? pctChange(current.revenue, previous.revenue) : null },
+        activeUsers: { value: current.activeUsers, change: previous ? pctChange(current.activeUsers, previous.activeUsers) : null },
+        conversionRate: { value: current.conversionRate, change: previous ? pctChange(current.conversionRate, previous.conversionRate) : null },
+        avgOrderValue: { value: current.avgOrderValue, change: previous ? pctChange(current.avgOrderValue, previous.avgOrderValue) : null },
       },
-    })
+    });
   } catch (err) {
-    console.error(
-      '[analytics/kpis] failed:',
-      err.message
-    )
-
-    res.status(400).json({
-      error: err.message,
-    })
+    console.error('[analytics/kpis] failed:', err);
+    res.status(400).json({ error: err.message });
   }
 }
 
 async function getRevenueTrend(req, res) {
   try {
-    const { baseMatch } = req.analytics
-    const { deviceType } = req.query
-
-    const match = {
-      ...baseMatch,
-      event: "purchase"
-    }
-
-    // Optional device filter
-    if (deviceType && ["mobile", "Desktop"].includes(deviceType)) {
-      match["deviceInfo.deviceType"] = deviceType
-    }
+    const match = { ...req.analytics.baseMatch, event: 'purchase' };
+    const normalizedDevice = normalizeDevice(req.query.deviceType);
+    if (normalizedDevice) match['deviceInfo.deviceType'] = normalizedDevice;
 
     const revenue = await Event.aggregate([
-      {
-        $match: match
-      },
-      {
-        $addFields: {
-          revenueAmount: {
-            $convert: {
-              input: "$properties.total",
-              to: "double",
-              onError: 0,
-              onNull: 0
-            }
-          }
-        }
-      },
+      { $match: match },
       {
         $group: {
-          _id: {
-            $dateToString: {
-              format: "%Y-%m-%d",
-              date: "$timestamp"
-            }
-          },
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
           revenue: {
-            $sum: "$revenueAmount"
+            $sum: {
+              $convert: { input: '$properties.total', to: 'double', onError: 0, onNull: 0 },
+            },
           },
-          orders: {
-            $sum: 1
-          }
-        }
+          orders: { $sum: 1 },
+        },
       },
-      {
-        $sort: {
-          _id: 1
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          date: "$_id",
-          revenue: 1,
-          orders: 1
-        }
-      }
-    ])
-
-    const totalRevenue = revenue.reduce(
-      (sum, item) => sum + item.revenue,
-      0
-    )
-
-    const totalOrders = revenue.reduce(
-      (sum, item) => sum + item.orders,
-      0
-    )
+      { $sort: { _id: 1 } },
+      { $project: { _id: 0, date: '$_id', revenue: 1, orders: 1 } },
+    ]);
 
     res.json({
-      deviceType: deviceType || "All",
-      totalRevenue,
-      totalOrders,
-      trend: revenue
-    })
+      deviceType: normalizedDevice || 'All',
+      totalRevenue: revenue.reduce((sum, row) => sum + row.revenue, 0),
+      totalOrders: revenue.reduce((sum, row) => sum + row.orders, 0),
+      trend: revenue,
+    });
   } catch (err) {
-    console.error("[analytics/revenue-trend] failed:", err)
-
-    res.status(500).json({
-      error: err.message
-    })
+    console.error('[analytics/revenue-trend] failed:', err);
+    res.status(500).json({ error: err.message });
   }
 }
-module.exports = { getKPIs, getRevenueTrend }
+
+module.exports = { getKPIs, getRevenueTrend, coreMetrics };

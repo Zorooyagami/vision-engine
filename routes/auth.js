@@ -1,11 +1,15 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const { signup, login } = require("../controllers/authController");
+const { signup, login } = require('../controllers/authController');
+const { optionalProject } = require('../middleware/requireProject');
+const { checkOrigin } = require('../middleware/checkOrigin');
 
-// POST /api/auth/signup
-router.post("/signup", signup);
+function checkOriginIfProject(req, res, next) {
+  if (!req.project) return next(); // legacy demo auth
+  return checkOrigin(req, res, next);
+}
 
-// POST /api/auth/login
-router.post("/login", login);
+router.post('/signup', optionalProject, checkOriginIfProject, signup);
+router.post('/login', optionalProject, checkOriginIfProject, login);
 
 module.exports = router;

@@ -1,74 +1,74 @@
 const Event = require('../models/Event');
-const { resolveDateRange, applyPlatformDeviceFilter } = require('./filterHelpers');
-const { getLoyalUserIds } = require('./aggregations');
+const {
+  resolveDateRange,
+  applyPlatformDeviceFilter,
+  getPersonaUserIds,
+} = require('./filterHelpers');
 
-async function classifyPersonas(start, end) {
-  const [loyalIds, firstTimeRows, activeRows] = await Promise.all([
-    getLoyalUserIds(),
-    Event.aggregate([
-      { $match: { event: 'sign_up', timestamp: { $gte: start, $lt: end }, userId: { $ne: null } } },
-      { $group: { _id: '$userId' } },
-    ]),
-    Event.aggregate([
-      { $match: { event: 'login', timestamp: { $gte: start, $lt: end }, userId: { $ne: null } } },
-      { $group: { _id: '$userId' } },
-    ]),
-  ]);
-
-  const firsttime = firstTimeRows.map((r) => r._id).filter((id) => !loyalIds.has(id));
-  const active = activeRows.map((r) => r._id).filter((id) => !loyalIds.has(id) && !firsttime.includes(id));
-
-  return { loyal: [...loyalIds], firsttime, active };
-}
-
-async function getPersonaBreakdown(eventName, windowMatch, start, end) {
-  const { loyal, firsttime, active } = await classifyPersonas(start, end);
-
-  const [loyalCount, firsttimeCount, activeCount, guestCount] = await Promise.all([
-    Event.countDocuments({ ...windowMatch, event: eventName, userId: { $in: loyal } }),
-    Event.countDocuments({ ...windowMatch, event: eventName, userId: { $in: firsttime } }),
-    Event.countDocuments({ ...windowMatch, event: eventName, userId: { $in: active } }),
-    Event.countDocuments({ ...windowMatch, event: eventName, userId: null }),
-  ]);
-
-  const total = loyalCount + firsttimeCount + activeCount + guestCount;
-  const pct = (n) => (total ? Math.round((n / total) * 100) : 0);
-
-  return [
-    { id: 'loyal', count: loyalCount, share: pct(loyalCount) },
-    { id: 'firsttime', count: firsttimeCount, share: pct(firsttimeCount) },
-    { id: 'active', count: activeCount, share: pct(activeCount) },
-    { id: 'guest', count: guestCount, share: pct(guestCount) },
-  ];
-}
-
-async function getSampleProperties(eventName) {
-  const samples = await Event.find({ event: eventName }).sort({ timestamp: -1 }).limit(20).select('properties').lean();
-
-  const seen = new Map(); // key -> type
-  samples.forEach((doc) => {
-    const props = doc.properties || {};
-    Object.entries(props).forEach(([key, value]) => {
-      if (!seen.has(key)) {
-        seen.set(key, Array.isArray(value) ? 'array' : typeof value);
-      }
+function discoverPropertySchema(events) {
+  const seen = new Map();
+  events.forEach((event) => {
+    Object.entries(event.properties || {}).forEach(([key, value]) => {
+      if (!seen.has(key)) seen.set(key, Array.isArray(value) ? 'array' : typeof value);
     });
   });
-
   return [...seen.entries()].map(([key, type]) => ({ key, type }));
 }
 
-async function getEventDetail({ eventName, period = '30d', customRange, platform = 'combined', device }) {
+async function getEventDetail({
+  projectId,
+  eventName,
+  period = '30d',
+  customRange,
+  platform = 'combined',
+  device,
+}) {
   const { start, end } = resolveDateRange(period, customRange);
-  const windowMatch = { timestamp: { $gte: start, $lt: end } };
+  const windowMatch = { projectId, timestamp: { $gte: start, $lt: end } };
   applyPlatformDeviceFilter(windowMatch, platform, device);
 
-  const [personaBreakdown, properties] = await Promise.all([
-    getPersonaBreakdown(eventName, windowMatch, start, end),
-    getSampleProperties(eventName),
+  const [loyalFilter, firsttimeFilter, activeFilter, samples] = await Promise.all([
+    getPersonaUserIds(projectId, ['loyal'], start, end),
+    getPersonaUserIds(projectId, ['firsttime'], start, end),
+    getPersonaUserIds(projectId, ['active'], start, end),
+    Event.find({ ...windowMatch, event: eventName })
+      .sort({ timestamp: -1 })
+      .limit(20)
+      .select('properties')
+      .lean(),
   ]);
 
-  return { personaBreakdown, properties };
+  const loyal = [...(loyalFilter?.ids || [])];
+  const firsttime = [...(firsttimeFilter?.ids || [])];
+  const active = [...(activeFilter?.ids || [])];
+
+  const counts = await Event.aggregate([
+    { $match: { ...windowMatch, event: eventName } },
+    {
+      $group: {
+        _id: null,
+        loyal: { $sum: { $cond: [{ $in: ['$userId', loyal] }, 1, 0] } },
+        firsttime: { $sum: { $cond: [{ $in: ['$userId', firsttime] }, 1, 0] } },
+        active: { $sum: { $cond: [{ $in: ['$userId', active] }, 1, 0] } },
+        guest: { $sum: { $cond: [{ $eq: ['$userId', null] }, 1, 0] } },
+      },
+    },
+  ]);
+
+  const raw = {
+    loyal: counts[0]?.loyal || 0,
+    firsttime: counts[0]?.firsttime || 0,
+    active: counts[0]?.active || 0,
+    guest: counts[0]?.guest || 0,
+  };
+  const total = Object.values(raw).reduce((sum, value) => sum + value, 0);
+  const personaBreakdown = ['loyal', 'firsttime', 'active', 'guest'].map((id) => ({
+    id,
+    count: raw[id],
+    share: total ? Math.round((raw[id] / total) * 100) : 0,
+  }));
+
+  return { personaBreakdown, properties: discoverPropertySchema(samples) };
 }
 
 module.exports = { getEventDetail };

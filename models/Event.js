@@ -1,53 +1,42 @@
+const mongoose = require('mongoose');
+
 /**
- * Event model — this is the ONE collection that stores every event type
- * (page_view, click, add_to_cart, purchase, etc.). We don't use a
- * separate collection per event type; instead, `event` (the name) and
- * `properties` (a flexible object) let one schema cover everything.
+ * Multi-tenant analytics event.
  *
- * This matches exactly what the tracker SDK sends:
- * {
- *   event: "add_to_cart",
- *   userId: "u123",
- *   sessionId: "s456",
- *   timestamp: "2026-07-27T10:15:00Z",
- *   url, path, referrer,
- *   properties: { productId, price, source }
- * }
+ * Every event is scoped to a public Vision projectId. The SDK project id is
+ * not a secret; isolation is enforced by validating the project/origin during
+ * ingestion and by including projectId in every dashboard query.
  */
-
-const mongoose = require("mongoose");
-
 const eventSchema = new mongoose.Schema(
   {
-    event: { type: String, required: true, index: true },
-    // NOT required: anonymous (non-logged-in) visitors are tracked with
-    // userId omitted/null — Vision explicitly needs to distinguish these
-    // from logged-in users (e.g. anonymous sessions never fire purchase).
-    userId: { type: String, required: false, default: null, index: true },
-    sessionId: { type: String, required: true, index: true },
-    timestamp: { type: Date, required: true, index: true },
+    projectId: { type: String, required: true, trim: true },
+    event: { type: String, required: true, trim: true },
+
+    // Anonymous visitors intentionally use null userId.
+    userId: { type: String, required: false, default: null },
+    sessionId: { type: String, required: true },
+    timestamp: { type: Date, required: true },
 
     url: String,
     path: String,
     referrer: String,
 
-    deviceInfo: {type: mongoose.Schema.Types.Mixed, default: {}}, // "mobile" | "tablet" | "desktop"
+    deviceInfo: { type: mongoose.Schema.Types.Mixed, default: {} },
     browser: String,
-    trafficSource: String, // "organic" | "paid" | "social" | "direct" | "referral"
-    ip: String, // ← add this
-    // Flexible bag for event-specific data (productId, price, step, etc.)
-    // `Mixed` means Mongoose won't enforce a fixed shape on this field —
-    // exactly what we want, since every event type carries different data.
+    trafficSource: String,
+    ip: String,
     properties: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
-  {
-    timestamps: false, // we already store our own `timestamp` field
-  }
+  { timestamps: false }
 );
 
+// The dashboard almost always filters by project first, then time/event/user.
+// These compound indexes prevent large multi-project collections from turning
+// into collection scans.
+eventSchema.index({ projectId: 1, timestamp: -1 });
+eventSchema.index({ projectId: 1, event: 1, timestamp: -1 });
+eventSchema.index({ projectId: 1, userId: 1, timestamp: -1 });
+eventSchema.index({ projectId: 1, sessionId: 1, timestamp: 1 });
+eventSchema.index({ projectId: 1, path: 1, event: 1, timestamp: -1 });
 
-// Compound index: most of our aggregation queries filter by date range
-// AND group by event type — this index speeds up exactly that pattern.
-eventSchema.index({ event: 1, timestamp: -1 });
-
-module.exports = mongoose.model("Event", eventSchema);
+module.exports = mongoose.model('Event', eventSchema);

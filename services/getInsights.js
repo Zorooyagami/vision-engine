@@ -1,25 +1,20 @@
-// services/getInsights.js
 const InsightSnapshot = require('../models/InsightSnapshot');
 const { WINDOWS } = require('./insightWindows');
 
-async function getInsightsForWindow(window) {
-  const snapshot = await InsightSnapshot.findOne({ window }).lean();
+async function getInsightsForWindow(projectId, window) {
+  const snapshot = await InsightSnapshot.findOne({ projectId, window }).lean();
   if (!snapshot) return null;
-  return {
-    generatedAt: snapshot.generatedAt,
-    insights: snapshot.insights,
-  };
+  return { generatedAt: snapshot.generatedAt, insights: snapshot.insights };
 }
 
-async function getAllInsights() {
-  const snapshots = await InsightSnapshot.find({}).lean();
-
+async function getAllInsights(projectId) {
+  const snapshots = await InsightSnapshot.find({ projectId }).lean();
   const byWindow = {};
   for (const { key } of WINDOWS) {
-    const snap = snapshots.find((s) => s.window === key);
+    const snapshot = snapshots.find((row) => row.window === key);
     byWindow[key] = {
-      generatedAt: snap?.generatedAt || null,
-      insights: snap?.insights || [],
+      generatedAt: snapshot?.generatedAt || null,
+      insights: snapshot?.insights || [],
     };
   }
   return byWindow;

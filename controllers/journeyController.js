@@ -1,21 +1,21 @@
-// controllers/journeyController.js
 const { getTopPaths, getPathDetail, getJourneyFlow } = require('../services/journeyPaths');
+
+function commonOptions(req) {
+  const { period, platform, device, personas, from, to } = req.query;
+  return {
+    projectId: req.projectId,
+    period: period || '30d',
+    customRange: from && to ? { from, to } : null,
+    personas: personas ? personas.split(',').filter(Boolean) : [],
+    platform: platform || 'combined',
+    device: device || null,
+  };
+}
 
 async function getTopPathsHandler(req, res) {
   try {
-    const { period, platform, device, personas, from, to, limit } = req.query;
-    const customRange = from && to ? { from, to } : null;
-    const personaList = personas ? personas.split(',').filter(Boolean) : [];
-
-    const data = await getTopPaths({
-      period: period || '30d',
-      customRange,
-      personas: personaList,
-      platform: platform || 'combined',
-      device: device || null,
-      limit: limit ? parseInt(limit, 10) : 4,
-    });
-
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 4, 20));
+    const data = await getTopPaths({ ...commonOptions(req), limit });
     res.json(data);
   } catch (err) {
     console.error('[journey] top paths failed', err);
@@ -25,23 +25,12 @@ async function getTopPathsHandler(req, res) {
 
 async function getPathDetailHandler(req, res) {
   try {
-    const { period, platform, device, personas, from, to, path } = req.query;
+    const path = req.query.path;
     if (!path) {
       return res.status(400).json({ error: 'path query param required, e.g. PLP,PDP,Cart,Checkout,Purchase' });
     }
-    const customRange = from && to ? { from, to } : null;
-    const personaList = personas ? personas.split(',').filter(Boolean) : [];
-    const pathNodes = path.split(',').filter(Boolean);
-
-    const data = await getPathDetail({
-      period: period || '30d',
-      customRange,
-      personas: personaList,
-      platform: platform || 'combined',
-      device: device || null,
-      pathNodes,
-    });
-
+    const pathNodes = path.split(',').map((node) => node.trim()).filter(Boolean);
+    const data = await getPathDetail({ ...commonOptions(req), pathNodes });
     res.json(data);
   } catch (err) {
     console.error('[journey] path detail failed', err);
@@ -51,18 +40,7 @@ async function getPathDetailHandler(req, res) {
 
 async function getJourneyFlowHandler(req, res) {
   try {
-    const { period, platform, device, personas, from, to } = req.query;
-    const customRange = from && to ? { from, to } : null;
-    const personaList = personas ? personas.split(',').filter(Boolean) : [];
-
-    const data = await getJourneyFlow({
-      period: period || '30d',
-      customRange,
-      personas: personaList,
-      platform: platform || 'combined',
-      device: device || null,
-    });
-
+    const data = await getJourneyFlow(commonOptions(req));
     res.json(data);
   } catch (err) {
     console.error('[journey] flow failed', err);

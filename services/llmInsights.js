@@ -17,9 +17,9 @@ The input contains two categories of facts:
 
 Facts associated with one or more user personas:
 
-* "loyal" = users with more than 2 completed orders
-* "active" = users who logged in during the filter period and are not loyal
-* "firsttime" = users who signed up during the filter period
+* "loyal" = users with 2 or more completed orders (lifetime)
+* "active" = known/logged-in users active during the filter period who are neither loyal nor first-time
+* "firsttime" = users who signed up during the filter period and are not already loyal
 * "guest" = anonymous users browsing without logging in
 
 Persona facts may include metrics such as:
@@ -275,8 +275,8 @@ Before returning the JSON, verify:
 
 const insightSchema = {
    type: 'array',
-  minItems: 6,
-  maxItems: 8,
+  minItems: 4,
+  maxItems: 6,
   items: {
     type: 'object',
     properties: {

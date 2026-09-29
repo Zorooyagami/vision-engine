@@ -1,288 +1,186 @@
-/**
- * Events Controller
- * -----------------
- * Handles events coming from the Vision Tracker SDK.
- */
+const Event = require('../models/Event');
+const Project = require('../models/Project');
+const {
+  resolveDateRange,
+  applyPlatformDeviceFilter,
+  getPersonaUserIds,
+  applyPersonaFilter,
+} = require('../services/filterHelpers');
 
-const Event = require("../models/Event");
-
-/**
- * Funnel events used by the analytics dashboard.
- */
 const FUNNEL_EVENTS = [
-  "product_view",
-  "add_to_cart",
-  "remove_from_cart",
-  "view_cart",
-  "checkout_start",
-  "purchase",
+  'product_view',
+  'add_to_cart',
+  'remove_from_cart',
+  'view_cart',
+  'checkout_start',
+  'purchase',
 ];
 
-/**
- * POST /api/events
- *
- * Body:
- * {
- *   events: [
- *     {
- *       event,
- *       userId,
- *       sessionId,
- *       timestamp,
- *       ...
- *     }
- *   ]
- * }
- */
+function validTimestamp(value) {
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime()) ? date : null;
+}
+
 async function ingestEvents(req, res) {
   try {
-    const { events } = req.body;
-
+    const { events } = req.body || {};
     if (!Array.isArray(events) || events.length === 0) {
-      return res.status(400).json({
-        error: "events must be a non-empty array",
-      });
+      return res.status(400).json({ error: 'events must be a non-empty array' });
     }
-
     if (events.length > 100) {
-      return res.status(400).json({
-        error: "maximum 100 events per batch",
-      });
+      return res.status(400).json({ error: 'maximum 100 events per batch' });
     }
 
-    // NOTE: userId is intentionally NOT required here. Anonymous
-    // (non-logged-in) visitors are valid — they're tracked via
-    // sessionId alone, with userId left null. Only event/sessionId/
-    // timestamp are the true minimum requirements for a valid event.
-    const validEvents = events.filter(
-      (e) =>
-        e &&
-        e.event &&
-        e.sessionId &&
-        e.timestamp
-    );
-
-    if (validEvents.length === 0) {
-      return res.status(400).json({
-        error: "no valid events in payload",
-      });
+    const heatmapsEnabled = req.project?.settings?.heatmaps !== false;
+    const analyticsEnabled = req.project?.settings?.analytics !== false;
+    if (!analyticsEnabled) {
+      return res.status(403).json({ error: 'Analytics collection is disabled for this project' });
     }
 
     const ip = req.ip;
+    const documents = [];
+    let rejected = 0;
 
-    const documents = validEvents.map((e) => ({
-      ...e,
-      ip,
-      timestamp: new Date(e.timestamp),
-    }));
+    for (const event of events) {
+      const timestamp = event?.timestamp ? validTimestamp(event.timestamp) : null;
+      const isHeatmap = event?.event === 'heatmap_click' || event?.event === 'heatmap_move';
 
-    const result = await Event.insertMany(documents, {
-      ordered: false,
-    });
+      if (!event?.event || !event?.sessionId || !timestamp || (isHeatmap && !heatmapsEnabled)) {
+        rejected += 1;
+        continue;
+      }
+
+      // projectId is always server-authoritative. A browser cannot write data
+      // into another tenant by putting a different id inside an individual event.
+      const { projectId: ignoredProjectId, ...safeEvent } = event;
+      documents.push({
+        ...safeEvent,
+        projectId: req.projectId,
+        userId: event.userId || null,
+        ip,
+        timestamp,
+      });
+    }
+
+    if (!documents.length) {
+      return res.status(400).json({ error: 'no valid events in payload' });
+    }
+
+    const result = await Event.insertMany(documents, { ordered: false });
+    const lastEventAt = documents.reduce(
+      (latest, event) => (event.timestamp > latest ? event.timestamp : latest),
+      documents[0].timestamp
+    );
+
+    // Keep project cards cheap to render: no need to scan the events collection
+    // just to know whether/when a project last sent data.
+    await Project.updateOne(
+      { projectId: req.projectId },
+      { $max: { lastEventAt } }
+    );
 
     return res.status(201).json({
       inserted: result.length,
       received: events.length,
-      rejected: events.length - validEvents.length,
+      rejected,
     });
-
   } catch (err) {
-    console.error("[events] ingest error:", err);
-
-    return res.status(500).json({
-      error: "failed to ingest events",
-    });
+    console.error('[events] ingest error:', err);
+    return res.status(500).json({ error: 'failed to ingest events' });
   }
 }
 
-
-/**
- * GET /api/events/recent
- *
- * Example:
- * GET /api/events/recent?limit=20
- */
 async function getRecentEvents(req, res) {
   try {
-    const requestedLimit = parseInt(
-      req.query.limit,
-      10
-    );
-
-    const limit = Math.min(
-      Number.isNaN(requestedLimit)
-        ? 20
-        : requestedLimit,
-      100
-    );
-
-    const events = await Event.find()
+    const requested = parseInt(req.query.limit, 10);
+    const limit = Math.max(1, Math.min(Number.isNaN(requested) ? 20 : requested, 100));
+    const events = await Event.find({ projectId: req.projectId })
       .sort({ timestamp: -1 })
       .limit(limit)
       .lean();
-
-    return res.json({
-      events,
-    });
-
+    res.json({ events });
   } catch (err) {
-    console.error(
-      "[events] recent fetch error:",
-      err
-    );
-
-    return res.status(500).json({
-      error: "failed to fetch recent events",
-    });
+    console.error('[events] recent fetch error:', err);
+    res.status(500).json({ error: 'failed to fetch recent events' });
   }
 }
 
-
-/**
- * GET /api/events/summary
- *
- * Returns the number of occurrences of each funnel event.
- *
- * Example:
- *
- * GET /api/events/summary
- *
- * Response:
- *
- * {
- *   "events": [
- *     {
- *       "event": "product_view",
- *       "count": 596
- *     },
- *     ...
- *   ]
- * }
- */
 async function getEventSummary(req, res) {
   try {
-
     const summary = await Event.aggregate([
       {
         $match: {
-          event: {
-            $in: FUNNEL_EVENTS,
-          },
+          projectId: req.projectId,
+          event: { $in: FUNNEL_EVENTS },
         },
       },
-
-      {
-        $group: {
-          _id: "$event",
-          count: {
-            $sum: 1,
-          },
-        },
-      },
-
-      {
-        $project: {
-          _id: 0,
-          event: "$_id",
-          count: 1,
-        },
-      },
-
-      {
-        $sort: {
-          count: -1,
-        },
-      },
+      { $group: { _id: '$event', count: { $sum: 1 } } },
+      { $project: { _id: 0, event: '$_id', count: 1 } },
+      { $sort: { count: -1 } },
     ]);
-
-    return res.json({
-      events: summary,
-    });
-
+    res.json({ events: summary });
   } catch (err) {
-
-    console.error(
-      "[events] summary error:",
-      err
-    );
-
-    return res.status(500).json({
-      error: "failed to fetch event summary",
-    });
+    console.error('[events] summary error:', err);
+    res.status(500).json({ error: 'failed to fetch event summary' });
   }
 }
 
 async function getPageHeatmaps(req, res) {
   try {
-    const { pageId } = req.params;
-
-    const pagesMapping = [
-      'home',
-      'products',
-      'product_detail',
-      'cart'
-    ];
-
-    const page = pagesMapping[pageId];
-
-    if (!page) {
-      return res.status(400).json({
-        error: "invalid pageId"
-      });
+    if (req.project?.settings?.heatmaps === false) {
+      return res.json({ page: null, events: [] });
     }
 
-    // Convert page name to actual URL path
-    const pagePaths = {
-      home: '/',
-      products: '/products',
-      product_detail: '/product/',
-      cart: '/cart'
+    const pages = ['home', 'products', 'product_detail', 'cart'];
+    const page = pages[Number(req.params.pageId)];
+    if (!page) return res.status(400).json({ error: 'invalid pageId' });
+
+    const { period = '30d', from, to, personas, platform = 'combined' } = req.query;
+    const { start, end } = resolveDateRange(period, from && to ? { from, to } : null);
+    const match = {
+      projectId: req.projectId,
+      event: { $in: ['heatmap_move', 'heatmap_click'] },
+      timestamp: { $gte: start, $lt: end },
     };
 
-    const path = pagePaths[page];
-    // delete all heatmaps
-  // const result = await Event.deleteMany({
-  //       event: {
-  //         $in: ["heatmap_move", "heatmap_click"]
-  //       }
-  //   });
-    const events = await Event.find({
-  event: {
-    $in: ['heatmap_move', 'heatmap_click']
-  },
-  path: page === 'product_detail'
-    ? { $regex: '^/products-detail/' }
-    : path
-})
-  .select({
-    _id: 1,
-    sessionId: 1,
-    userId: 1,
-    event: 1,
-    timestamp: 1,
-    path: 1,
-    properties: 1
-  })
-  .sort({ timestamp: 1 })
-  .lean();
+    const explicitPath = req.query.path ? String(req.query.path) : null;
+    if (explicitPath) {
+      match.path = explicitPath;
+    } else if (page === 'product_detail') {
+      match.path = { $regex: '^/products-detail/' };
+    } else {
+      match.path = { home: '/', products: '/products', cart: '/cart' }[page];
+    }
 
-    return res.json({
-      page,
-      events
-    });
+    applyPlatformDeviceFilter(
+      match,
+      platform,
+      req.query.device || req.query.deviceType || null
+    );
 
+    const personaList = personas ? String(personas).split(',').filter(Boolean) : [];
+    const personaFilter = await getPersonaUserIds(req.projectId, personaList, start, end);
+    applyPersonaFilter(match, personaFilter);
+
+    const events = await Event.find(match)
+      .select({
+        _id: 1,
+        sessionId: 1,
+        userId: 1,
+        event: 1,
+        timestamp: 1,
+        path: 1,
+        properties: 1,
+        deviceInfo: 1,
+      })
+      .sort({ timestamp: 1 })
+      .lean();
+
+    res.json({ page, events });
   } catch (err) {
-    console.error("[events] heatmap error:", err);
-
-    return res.status(500).json({
-      error: "failed to fetch heatmap data"
-    });
+    console.error('[events] heatmap error:', err);
+    res.status(500).json({ error: 'failed to fetch heatmap data' });
   }
 }
 
-module.exports = {
-  ingestEvents,
-  getRecentEvents,
-  getEventSummary,
-  getPageHeatmaps
-};
+module.exports = { ingestEvents, getRecentEvents, getEventSummary, getPageHeatmaps };

@@ -5,7 +5,7 @@ const PERIOD_DAYS = {
   '7d': 7,
   '30d': 30,
   '90d': 90,
-  '180d': 182, // approx 6 months
+  '180d': 180,
   '1y': 365,
 }
 

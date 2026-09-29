@@ -1,20 +1,22 @@
-// controllers/sessionReplayController.js
 const { listSessions, listRecordedUsers } = require('../services/sessionReplay');
+
+function replayOptions(req) {
+  const { period, personas, search, from, to } = req.query;
+  return {
+    projectId: req.projectId,
+    period: period || '30d',
+    customRange: from && to ? { from, to } : null,
+    personas: personas ? personas.split(',').filter(Boolean) : [],
+    search: search || '',
+  };
+}
 
 async function getSessions(req, res) {
   try {
-    const { period, personas, search, userId, from, to } = req.query;
-    const customRange = from && to ? { from, to } : null;
-    const personaList = personas ? personas.split(',').filter(Boolean) : [];
-
     const sessions = await listSessions({
-      period: period || '30d',
-      customRange,
-      personas: personaList,
-      search: search || '',
-      userId: userId || null,
+      ...replayOptions(req),
+      userId: req.query.userId || null,
     });
-
     res.json({ sessions });
   } catch (err) {
     console.error('[record/sessions] failed', err);
@@ -24,17 +26,7 @@ async function getSessions(req, res) {
 
 async function getRecordedUsers(req, res) {
   try {
-    const { period, personas, search, from, to } = req.query;
-    const customRange = from && to ? { from, to } : null;
-    const personaList = personas ? personas.split(',').filter(Boolean) : [];
-
-    const users = await listRecordedUsers({
-      period: period || '30d',
-      customRange,
-      personas: personaList,
-      search: search || '',
-    });
-
+    const users = await listRecordedUsers(replayOptions(req));
     res.json({ users });
   } catch (err) {
     console.error('[record/recorded-users] failed', err);

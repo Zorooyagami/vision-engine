@@ -4,36 +4,32 @@ const { getEventDetail } = require('../services/eventDetail');
 async function getEventDetailHandler(req, res) {
   try {
     const { period, platform, device, from, to } = req.query;
-    const customRange = from && to ? { from, to } : null;
-
     const detail = await getEventDetail({
+      projectId: req.projectId,
       eventName: req.params.name,
       period: period || '30d',
-      customRange,
+      customRange: from && to ? { from, to } : null,
       platform: platform || 'combined',
       device: device || null,
     });
-
     res.json(detail);
   } catch (err) {
     console.error('[events] detail failed', err);
     res.status(500).json({ error: 'Failed to load event detail' });
   }
 }
+
 async function getEvents(req, res) {
   try {
     const { period, platform, device, personas, from, to } = req.query;
-    const customRange = from && to ? { from, to } : null;
-    const personaList = personas ? personas.split(',').filter(Boolean) : [];
-
     const events = await getEventCatalog({
+      projectId: req.projectId,
       period: period || '30d',
-      customRange,
-      personas: personaList,
+      customRange: from && to ? { from, to } : null,
+      personas: personas ? personas.split(',').filter(Boolean) : [],
       platform: platform || 'combined',
       device: device || null,
     });
-
     res.json({ events });
   } catch (err) {
     console.error('[events] failed', err);
@@ -43,7 +39,7 @@ async function getEvents(req, res) {
 
 async function patchEventStatus(req, res) {
   try {
-    const updated = await toggleEventStatus(req.params.name);
+    const updated = await toggleEventStatus(req.projectId, req.params.name);
     if (!updated) return res.status(404).json({ error: 'Event not found' });
     res.json({ name: updated.name, status: updated.status });
   } catch (err) {
@@ -54,9 +50,7 @@ async function patchEventStatus(req, res) {
 
 async function postEvent(req, res) {
   try {
-    const { name, description, category } = req.body;
-    if (!name) return res.status(400).json({ error: 'name is required' });
-    const created = await addEventDefinition({ name, description, category });
+    const created = await addEventDefinition(req.projectId, req.body);
     res.status(201).json({ event: created });
   } catch (err) {
     res.status(400).json({ error: err.message });
