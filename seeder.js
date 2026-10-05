@@ -18,7 +18,11 @@ const User = require('./models/User') // adjust path to your real User model
 // CONFIG
 // =====================================================================
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/shopeasy'
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/vision'
+
+// Every event/user must belong to a project (see models/Event.js, models/User.js).
+// Set SEED_PROJECT_ID, or the first active project in the DB is used.
+let PROJECT_ID = process.env.SEED_PROJECT_ID || null
 
 const TOTAL_MONTHS = 6
 const MONTHLY_NEW_USERS = [10, 20, 35, 50, 65, 70] // month 1 -> month 6, sums to 250
@@ -38,7 +42,8 @@ const SEED_PASSWORD = 'password123'
 
 function generateUserId(email) {
   const normalizedEmail = email.trim().toLowerCase()
-  return crypto.createHash('sha256').update(normalizedEmail).digest('hex').slice(0, 16)
+  const seed = PROJECT_ID ? `${PROJECT_ID}:${normalizedEmail}` : normalizedEmail
+  return crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16)
 }
 
 function normalizeEmail(email) {
@@ -51,6 +56,7 @@ function normalizeEmail(email) {
 
 const eventSchema = new mongoose.Schema(
   {
+    projectId: { type: String, required: true, index: true },
     event: { type: String, required: true, index: true },
     userId: { type: String, required: true, index: true },
     sessionId: { type: String, required: true, index: true },
@@ -289,6 +295,7 @@ function simulateSession(userId, sessionStart, isFirstSession) {
   function push(eventName, path, properties, extra = {}) {
     const url = `${BASE_URL}${path}`
     events.push({
+      projectId: PROJECT_ID,
       event: eventName,
       userId,
       sessionId,
@@ -555,6 +562,16 @@ async function run() {
   await mongoose.connect(MONGO_URI)
   console.log('[seed] connected to Mongo')
 
+  if (!PROJECT_ID) {
+    const Project = require('./models/Project')
+    const project = await Project.findOne({ status: 'active' }).sort({ createdAt: 1 }).lean()
+    if (!project) {
+      throw new Error('No project found. Create one in the dashboard first, or set SEED_PROJECT_ID.')
+    }
+    PROJECT_ID = project.projectId
+  }
+  console.log(`[seed] seeding into project ${PROJECT_ID}`)
+
   const summary = {} // event name -> count
   let totalUsers = 0
   let batch = []
@@ -580,11 +597,12 @@ async function run() {
         const email = normalizeEmail(`${first.toLowerCase()}.${randomInt(100, 99999)}@example.com`)
         const userId = generateUserId(email)
 
-        const existing = await User.findOne({ $or: [{ email }, { userId }] })
+        const existing = await User.findOne({ projectId: PROJECT_ID, $or: [{ email }, { userId }] })
         if (existing) continue // collision (rare) — retry with a new random email
 
         try {
           user = await User.create({
+            projectId: PROJECT_ID,
             userId,
             email,
             password: SEED_PASSWORD, // plain text, matching authController's current scheme

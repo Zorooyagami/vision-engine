@@ -1,7 +1,16 @@
 // services/llmInsights.js
 const { GoogleGenAI } = require('@google/genai');
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let _ai = null;
+function getAi() {
+  if (!_ai) {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY is not set');
+    }
+    _ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+  return _ai;
+}
 
 const SYSTEM_PROMPT = `You are an analytics intelligence engine for an e-commerce analytics dashboard.
 
@@ -296,7 +305,7 @@ const insightSchema = {
 
 async function synthesizeInsights(facts) {
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: 'gemini-3.5-flash', // check current free-tier model names at aistudio.google.com
       contents: `${SYSTEM_PROMPT}\n\nFacts:\n${JSON.stringify(facts)}`,
       config: {

@@ -1,3 +1,4 @@
+//vision-engine/services/aggregations.js
 const Event = require('../models/Event');
 
 async function getLoyalUserIds(projectId) {
