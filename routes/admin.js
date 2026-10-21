@@ -22,7 +22,7 @@ const {
 const { requireProject } = require('../middleware/requireProject');
 const { getOverview } = require('../controllers/personaOverviewController');
 const { getPersonaOverview } = require('../controllers/personaExplorerController');
-
+const { streamHandler } = require('../services/liveService');
 /* =========================
    PROJECTS
 ========================= */
@@ -72,7 +72,8 @@ router.get('/revenue/breakdown', getBreakdown);
 router.get('/revenue/stacked', getStacked);
 router.get('/persona-leaderboard', getLeaderboard);
 
-
+router.get('/live/stream', streamHandler);
 router.get('/personas/overview', getPersonaOverview);
+
 
 module.exports = router;

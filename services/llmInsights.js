@@ -670,7 +670,7 @@ async function synthesizeInsights(facts) {
         responseSchema: insightSchema,
       },
     });
-
+    console.log("response from Gemini:", response);
     const text = response.text;
     const parsed = JSON.parse(text);
 

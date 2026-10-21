@@ -1,8 +1,9 @@
+//controllers/recordController.js
 const zlib = require('zlib');
 const Session = require('../models/Session');
 const User = require('../models/User');
 const Project = require('../models/Project');
-
+const { publishRecording } = require('../services/liveService');
 const ALLOW_LEGACY_USER_FALLBACK = process.env.ALLOW_LEGACY_USER_FALLBACK === 'true';
 
 function decompressAsync(buffer) {
@@ -47,12 +48,13 @@ async function ingestSession(req, res) {
       },
       { upsert: true }
     );
-
+       publishRecording({ projectId: req.projectId, sessionId, userId });
     await Project.updateOne(
       { projectId: req.projectId },
       { $max: { lastEventAt: receivedAt } }
     );
-
+    
+    
     res.sendStatus(204);
   } catch (err) {
     console.error('[record/ingest] failed:', err.message);

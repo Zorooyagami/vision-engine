@@ -1,5 +1,7 @@
+//controllers/eventsController.js
 const Event = require('../models/Event');
 const Project = require('../models/Project');
+const { publishEvent } = require('../services/liveService');
 const {
   resolveDateRange,
   applyPlatformDeviceFilter,
@@ -67,6 +69,8 @@ async function ingestEvents(req, res) {
     }
 
     const result = await Event.insertMany(documents, { ordered: false });
+    console.log(`[events] ingested ${result.length} events for project ${req.projectId}`);
+    result.forEach(publishEvent);
     const lastEventAt = documents.reduce(
       (latest, event) => (event.timestamp > latest ? event.timestamp : latest),
       documents[0].timestamp

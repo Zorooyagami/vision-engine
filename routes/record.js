@@ -1,3 +1,4 @@
+//routes/record.js
 const express = require('express');
 const { getSessions, getRecordedUsers } = require('../controllers/sessionReplayController');
 const {

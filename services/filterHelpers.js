@@ -1,3 +1,4 @@
+//services/filterHelpers.js
 const Event = require('../models/Event');
 const { getLoyalUserIds } = require('./aggregations');
 

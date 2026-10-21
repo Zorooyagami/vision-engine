@@ -7,37 +7,10 @@ function normalizeEmail(email) {
 
 function generateUserId(email, projectId = null) {
   const normalizedEmail = normalizeEmail(email);
+  console.log('[auth] login lookup:', { projectId, normalizedEmail });
+
   const seed = projectId ? `${projectId}:${normalizedEmail}` : normalizedEmail;
   return crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16);
-}
-
-function scryptAsync(password, salt) {
-  return new Promise((resolve, reject) => {
-    crypto.scrypt(password, salt, 64, (err, key) => {
-      if (err) reject(err);
-      else resolve(key);
-    });
-  });
-}
-
-async function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const key = await scryptAsync(String(password), salt);
-  return `scrypt$${salt}$${key.toString('hex')}`;
-}
-
-async function verifyPassword(password, stored) {
-  if (!stored?.startsWith('scrypt$')) {
-    // Backward compatibility for existing demo users. Successful login will
-    // transparently upgrade the stored plaintext password below.
-    return stored === password;
-  }
-
-  const [, salt, expectedHex] = stored.split('$');
-  if (!salt || !expectedHex) return false;
-  const actual = await scryptAsync(String(password), salt);
-  const expected = Buffer.from(expectedHex, 'hex');
-  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
 async function signup(req, res) {
@@ -59,10 +32,10 @@ async function signup(req, res) {
       projectId,
       userId: generateUserId(normalizedEmail, projectId),
       email: normalizedEmail,
-      password: await hashPassword(password),
+      password: String(password),
       name: String(name).trim(),
     });
-
+console.log('[auth] user found:', !!user, 'stored password:', user?.password);
     res.status(201).json({ userId: user.userId, email: user.email, name: user.name });
   } catch (err) {
     console.error('[auth] signup error:', err.message);
@@ -72,20 +45,18 @@ async function signup(req, res) {
 
 async function login(req, res) {
   try {
+    console.log('[auth] headers:', req.headers);
+console.log('[auth] body:', req.body);
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
     const projectId = req.projectId || null;
     const normalizedEmail = normalizeEmail(email);
+    console.log('[auth] login lookup:', { projectId, normalizedEmail });
     const user = await User.findOne({ projectId, email: normalizedEmail });
-    const valid = user ? await verifyPassword(password, user.password) : false;
+    const valid = user ? user.password === String(password) : false;
 
     if (!valid) return res.status(401).json({ error: 'invalid email or password' });
-
-    if (!user.password.startsWith('scrypt$')) {
-      user.password = await hashPassword(password);
-      await user.save();
-    }
 
     res.json({ userId: user.userId, email: user.email, name: user.name });
   } catch (err) {
@@ -93,6 +64,5 @@ async function login(req, res) {
     res.status(500).json({ error: 'failed to log in' });
   }
 }
-
 
 module.exports = { signup, login };
