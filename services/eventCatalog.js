@@ -1,3 +1,4 @@
+const { normalizeName, validateName } = require('./trackingValidation');
 const Event = require('../models/Event');
 const EventDefinition = require('../models/EventDefinition');
 const {
@@ -117,6 +118,7 @@ async function getEventCatalog({
       volume: metric?.volume || 0,
       lastSeen: metric?.lastSeen || null,
       status: def.status,
+      tracking: def.tracking || null,
       spark: sparkFor(def.name),
     };
   });
@@ -130,18 +132,26 @@ async function toggleEventStatus(projectId, name) {
   return def;
 }
 
-async function addEventDefinition(projectId, { name, description, category }) {
-  const normalizedName = String(name || '').trim();
-  if (!normalizedName) throw new Error('name is required');
-  const existing = await EventDefinition.findOne({ projectId, name: normalizedName });
-  if (existing) throw new Error('An event with this name already exists');
-  return EventDefinition.create({
-    projectId,
-    name: normalizedName,
-    description: description || '',
-    category: category || 'other',
-    status: 'Active',
-  });
+async function assertNameAvailable(projectId, value) {
+  const name = validateName(value);
+  const [definitions, observed] = await Promise.all([
+    EventDefinition.distinct('name', { projectId }), Event.distinct('event', { projectId }),
+  ]);
+  if ([...definitions, ...observed].some(n => normalizeName(n) === name)) {
+    throw Object.assign(new Error('This event name already exists in this project. Choose a different name.'), { status: 409 });
+  }
+  return name;
+}
+async function addEventDefinition(projectId, { name, description, category, tracking, status }) {
+  const normalizedName = await assertNameAvailable(projectId, name);
+  try {
+    return await EventDefinition.create({ projectId, name: normalizedName,
+      description: String(description || '').slice(0, 500), category: category || 'other',
+      tracking, status: status === 'Inactive' ? 'Inactive' : 'Active' });
+  } catch (error) {
+    if (error.code === 11000) throw Object.assign(new Error('This event name already exists.'), { status: 409 });
+    throw error;
+  }
 }
 
-module.exports = { getEventCatalog, toggleEventStatus, addEventDefinition, ensureCatalogSeeded };
+module.exports = { getEventCatalog, toggleEventStatus, addEventDefinition, ensureCatalogSeeded, assertNameAvailable };

@@ -1,4 +1,5 @@
 const { getEventCatalog, toggleEventStatus, addEventDefinition } = require('../services/eventCatalog');
+const { validateTracking } = require('../services/trackingValidation');
 const { getEventDetail } = require('../services/eventDetail');
 
 async function getEventDetailHandler(req, res) {
@@ -50,10 +51,11 @@ async function patchEventStatus(req, res) {
 
 async function postEvent(req, res) {
   try {
-    const created = await addEventDefinition(req.projectId, req.body);
+    const tracking = req.body.tracking ? validateTracking(req.body.tracking, req.project) : undefined;
+    const created = await addEventDefinition(req.projectId, { ...req.body, tracking });
     res.status(201).json({ event: created });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(err.status || 400).json({ error: err.message });
   }
 }
 

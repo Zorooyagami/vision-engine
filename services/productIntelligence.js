@@ -119,10 +119,24 @@ async function getProductIntelligence(req, res) {
     })).sort((a, b) => b.searches - a.searches);
 
     const opportunities = productRows
-      .filter((p) => p.views >= 3 && p.unitsSold === 0 && p.cartAdds > 0 || p.views >= 5 && p.unitsSold === 0)
-      .map((p) => ({ productId: p.productId, name: p.name, views: p.views, cartAdds: p.cartAdds, unitsSold: p.unitsSold, revenue: p.revenue,
-        reason: p.cartAdds > 0 ? 'Added to cart but no recorded purchases' : 'High product views with no recorded purchases' }))
-      .sort((a, b) => (b.cartAdds * 3 + b.views) - (a.cartAdds * 3 + a.views)).slice(0, 6);
+      .filter((p) => (p.views >= 3 && p.unitsSold === 0 && p.cartAdds > 0) || (p.views >= 5 && p.unitsSold === 0))
+      .map((p) => {
+        // Scenario only: assume a 1%-3% incremental conversion improvement on observed views,
+        // with current listed product price as a proxy for order value. This is not a forecast.
+        const price = Math.max(0, asNumber(p.price));
+        const upsideLow = price > 0 ? Math.round(p.views * 0.01 * price) : null;
+        const upsideHigh = price > 0 ? Math.round(p.views * 0.03 * price) : null;
+        const confidence = p.views >= 100 ? 'High' : p.views >= 30 ? 'Medium' : 'Low';
+        const impact = p.views >= 100 ? 'High' : p.views >= 30 ? 'Medium' : 'Low';
+        const effort = p.cartAdds > 0 ? 'Medium' : 'Low';
+        return {
+          productId: p.productId, name: p.name, views: p.views, cartAdds: p.cartAdds, unitsSold: p.unitsSold,
+          revenue: p.revenue, price, upsideLow, upsideHigh, confidence, impact, effort,
+          priorityScore: (p.views * (p.cartAdds > 0 ? 1.5 : 1)) * (confidence === 'High' ? 1.25 : confidence === 'Medium' ? 1 : 0.75),
+          reason: p.cartAdds > 0 ? 'Added to cart but no recorded purchases' : 'High product views with no recorded purchases',
+        };
+      })
+      .sort((a, b) => b.priorityScore - a.priorityScore).slice(0, 6);
 
     res.json({
       period, range: { from: start.toISOString(), to: end.toISOString() },
