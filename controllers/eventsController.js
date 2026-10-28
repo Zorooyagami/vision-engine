@@ -2,6 +2,7 @@
 const Event = require('../models/Event');
 const Project = require('../models/Project');
 const { publishEvent } = require('../services/liveService');
+const { getSdkConfig: loadSdkConfig } = require('../services/eventCatalog');
 const {
   resolveDateRange,
   applyPlatformDeviceFilter,
@@ -187,4 +188,22 @@ async function getPageHeatmaps(req, res) {
   }
 }
 
-module.exports = { ingestEvents, getRecentEvents, getEventSummary, getPageHeatmaps };
+// Public, read-only config for the hosted SDK: which dashboard-defined events to
+// fire, and which dashboard origins may drive the on-site element picker.
+async function getSdkConfig(req, res) {
+  try {
+    const { version, definitions } = await loadSdkConfig(req.projectId);
+    const editorOrigins = String(process.env.DASHBOARD_ORIGINS || '')
+      .split(',')
+      .map((o) => o.trim().replace(/\/$/, ""))
+      .filter(Boolean);
+
+    res.set('Cache-Control', 'public, max-age=30');
+    res.json({ version, definitions, editorOrigins });
+  } catch (err) {
+    console.error('[events] sdk config error:', err);
+    res.status(500).json({ error: 'failed to load sdk config' });
+  }
+}
+
+module.exports = { ingestEvents, getRecentEvents, getEventSummary, getPageHeatmaps, getSdkConfig };

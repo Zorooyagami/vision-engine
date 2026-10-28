@@ -1,5 +1,9 @@
-const { getEventCatalog, toggleEventStatus, addEventDefinition } = require('../services/eventCatalog');
-const { validateTracking } = require('../services/trackingValidation');
+const {
+  getEventCatalog,
+  toggleEventStatus,
+  addEventDefinition,
+  updateEventDefinition,
+} = require('../services/eventCatalog');
 const { getEventDetail } = require('../services/eventDetail');
 
 async function getEventDetailHandler(req, res) {
@@ -51,12 +55,22 @@ async function patchEventStatus(req, res) {
 
 async function postEvent(req, res) {
   try {
-    const tracking = req.body.tracking ? validateTracking(req.body.tracking, req.project) : undefined;
-    const created = await addEventDefinition(req.projectId, { ...req.body, tracking });
+    const created = await addEventDefinition(req.projectId, req.body);
     res.status(201).json({ event: created });
   } catch (err) {
     res.status(err.status || 400).json({ error: err.message });
   }
 }
 
-module.exports = { getEvents, patchEventStatus, postEvent, getEventDetailHandler };
+async function patchEvent(req, res) {
+  try {
+    const updated = await updateEventDefinition(req.projectId, req.params.name, req.body || {});
+    if (!updated) return res.status(404).json({ error: 'Event not found' });
+    res.json({ event: updated });
+  } catch (err) {
+    if (!err.status) console.error('[events] update failed', err);
+    res.status(err.status || 500).json({ error: err.message || 'Failed to update event' });
+  }
+}
+
+module.exports = { getEvents, patchEventStatus, postEvent, patchEvent, getEventDetailHandler };

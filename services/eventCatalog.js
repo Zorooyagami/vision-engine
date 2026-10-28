@@ -1,6 +1,6 @@
-const { normalizeName, validateName } = require('./trackingValidation');
 const Event = require('../models/Event');
 const EventDefinition = require('../models/EventDefinition');
+const { sanitizeTrigger } = require('./eventTrigger');
 const {
   resolveDateRange,
   applyPlatformDeviceFilter,
@@ -118,7 +118,8 @@ async function getEventCatalog({
       volume: metric?.volume || 0,
       lastSeen: metric?.lastSeen || null,
       status: def.status,
-      tracking: def.tracking || null,
+      source: def.source || 'code',
+      trigger: def.trigger || null,
       spark: sparkFor(def.name),
     };
   });
@@ -132,26 +133,94 @@ async function toggleEventStatus(projectId, name) {
   return def;
 }
 
-async function assertNameAvailable(projectId, value) {
-  const name = validateName(value);
-  const [definitions, observed] = await Promise.all([
-    EventDefinition.distinct('name', { projectId }), Event.distinct('event', { projectId }),
-  ]);
-  if ([...definitions, ...observed].some(n => normalizeName(n) === name)) {
-    throw Object.assign(new Error('This event name already exists in this project. Choose a different name.'), { status: 409 });
-  }
-  return name;
-}
-async function addEventDefinition(projectId, { name, description, category, tracking, status }) {
-  const normalizedName = await assertNameAvailable(projectId, name);
-  try {
-    return await EventDefinition.create({ projectId, name: normalizedName,
-      description: String(description || '').slice(0, 500), category: category || 'other',
-      tracking, status: status === 'Inactive' ? 'Inactive' : 'Active' });
-  } catch (error) {
-    if (error.code === 11000) throw Object.assign(new Error('This event name already exists.'), { status: 409 });
-    throw error;
-  }
+const CATEGORIES = ['browsing', 'cart', 'checkout', 'other'];
+
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
 }
 
-module.exports = { getEventCatalog, toggleEventStatus, addEventDefinition, ensureCatalogSeeded, assertNameAvailable };
+async function addEventDefinition(projectId, { name, description, category, trigger }) {
+  const normalizedName = String(name || '').trim();
+  if (!normalizedName) throw httpError(400, 'name is required');
+  if (normalizedName.length > 100) throw httpError(400, 'name must be 100 characters or fewer');
+  if (category && !CATEGORIES.includes(category)) throw httpError(400, `Unsupported category: ${category}`);
+
+  // Validate before touching the DB so a bad trigger never leaves a half-made event.
+  const cleanTrigger = trigger ? sanitizeTrigger(trigger) : null;
+
+  const existing = await EventDefinition.findOne({ projectId, name: normalizedName });
+  if (existing) throw httpError(409, 'An event with this name already exists');
+  return EventDefinition.create({
+    projectId,
+    name: normalizedName,
+    description: description || '',
+    category: category || 'other',
+    status: 'Active',
+    source: cleanTrigger ? 'dashboard' : 'code',
+    ...(cleanTrigger ? { trigger: cleanTrigger } : {}),
+  });
+}
+
+// name is the identity of an event (history is keyed on it), so it is not editable.
+async function updateEventDefinition(projectId, name, patch = {}) {
+  const def = await EventDefinition.findOne({ projectId, name });
+  if (!def) return null;
+
+  if (patch.description !== undefined) def.description = String(patch.description || '');
+  if (patch.category !== undefined) {
+    if (!CATEGORIES.includes(patch.category)) throw httpError(400, `Unsupported category: ${patch.category}`);
+    def.category = patch.category;
+  }
+
+  if (patch.trigger !== undefined) {
+    if (patch.trigger === null) {
+      // "Remove element tagging": the event stays in the catalog, the SDK stops firing it.
+      def.trigger = undefined;
+      def.source = 'code';
+    } else {
+      def.trigger = sanitizeTrigger(patch.trigger);
+      def.source = 'dashboard';
+    }
+  }
+
+  await def.save();
+  return def;
+}
+
+// What the public SDK needs: only active, element-tagged events, nothing else.
+async function getSdkConfig(projectId) {
+  const defs = await EventDefinition.find({
+    projectId,
+    status: 'Active',
+    'trigger.selector': { $exists: true },
+  })
+    .sort({ name: 1 })
+    .lean();
+
+  const version = defs.reduce((max, d) => {
+    const t = d.updatedAt ? new Date(d.updatedAt).getTime() : 0;
+    return t > max ? t : max;
+  }, 0);
+
+  return {
+    version: String(version),
+    definitions: defs.map((d) => ({
+      name: d.name,
+      kind: d.trigger.kind || 'click',
+      selector: d.trigger.selector,
+      urlMatch: d.trigger.urlMatch || { mode: 'any', value: '' },
+      properties: d.trigger.properties || [],
+    })),
+  };
+}
+
+module.exports = {
+  getEventCatalog,
+  toggleEventStatus,
+  addEventDefinition,
+  updateEventDefinition,
+  getSdkConfig,
+  ensureCatalogSeeded,
+};
