@@ -1,3 +1,4 @@
+//services/intelligence/ask.js
 const allowed=['revenue-change','revenue','devices','personas','journeys','summary','unsupported'];
 function localIntent(q){q=q.toLowerCase();if(/forecast|predict|tomorrow|next month|profit|refund|campaign|product|country/.test(q))return 'unsupported';if(/why|change|drop|declin|growth|grew|increase/.test(q)&&/revenue|sales|order/.test(q))return 'revenue-change';if(/device|mobile|desktop|tablet/.test(q))return 'devices';if(/persona|loyal|guest|customer group|segment|first.?time/.test(q))return 'personas';if(/journey|funnel|convert|conversion|abandon|checkout|sessions?\s+(?:purchased|bought)/.test(q))return 'journeys';if(/revenue|sales|order|basket/.test(q))return 'revenue';if(/summary|overview|session|user|event/.test(q))return 'summary';return 'unsupported';}
 async function interpret(question){if(!process.env.GEMINI_API_KEY)return {intent:localIntent(question),mode:'rules'};
