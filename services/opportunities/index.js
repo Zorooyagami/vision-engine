@@ -39,7 +39,7 @@ function buildOpportunity({ key, type, title, summary, evidence, impactLow, impa
   const impactScore = Math.min(100, Math.round(Math.log10(Math.max(1, impactBase) + 1) * 24));
   return {
     key, type, title, summary, evidence, product: product || null,
-    potential: { low: Math.round(impactLow), base: Math.round(impactBase), high: Math.round(impactHigh), currency: 'INR', basis: 'gross revenue scenario' },
+    potential: { low: Math.round(impactLow), base: Math.round(impactBase), high: Math.round(impactHigh), currency: 'USD', basis: 'gross revenue scenario' },
     confidence, effort, impactScore, priorityScore: scoreOpportunity({ impact: impactScore, confidence, effort }),
     affectedSessions: affectedSessions || 0, recommendation, assumptions,
     status: 'new', statusNote: '',

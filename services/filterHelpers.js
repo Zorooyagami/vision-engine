@@ -40,7 +40,7 @@ function resolveDateRange(period, customRange) {
 }
 
 function normalizeDevice(device) {
-  if (!device) return null;
+  if (!device || String(device).toLowerCase() === 'all') return null;
   const value = String(device).toLowerCase();
   if (value === 'desktop') return 'Desktop';
   if (value === 'mobile') return 'Mobile';
@@ -62,6 +62,9 @@ async function getPersonaUserIds(projectId, personas, start, end) {
   if (!personas?.length) return null;
   if (!projectId) throw new Error('projectId is required for persona resolution');
 
+  const dynamic = personas.filter(p => /^dynamic:[a-f0-9]{24}$/.test(p));
+  if(personas.some(p => !['loyal','firsttime','active','guest'].includes(p) && !dynamic.includes(p))) throw new Error('Unsupported persona');
+  const resolved = dynamic.length ? await require('./behavior/store').resolveApproved(projectId,dynamic,end) : {sessions:new Set()};
   const needLoyal = personas.some((p) => ['loyal', 'firsttime', 'active'].includes(p));
   const needFirstTime = personas.some((p) => ['firsttime', 'active'].includes(p));
   const needActive = personas.includes('active');
@@ -114,7 +117,7 @@ async function getPersonaUserIds(projectId, personas, start, end) {
     });
   }
 
-  return { ids, includeGuest: personas.includes('guest') };
+  return { ids, sessions:resolved.sessions, includeGuest: personas.includes('guest') };
 }
 
 function applyPersonaFilter(match, personaFilter) {
@@ -124,9 +127,11 @@ function applyPersonaFilter(match, personaFilter) {
   if (personaFilter.ids.size > 0) {
     orConditions.push({ userId: { $in: [...personaFilter.ids] } });
   }
+  if(personaFilter.sessions?.size) orConditions.push({sessionId:{$in:[...personaFilter.sessions]}});
   if (personaFilter.includeGuest) orConditions.push({ userId: null });
 
-  match.$or = orConditions.length ? orConditions : [{ userId: { $in: [] } }];
+  const condition = { $or: orConditions.length ? orConditions : [{ userId: { $in: [] } }] };
+  if(match.$or) { match.$and=[...(match.$and||[]),condition]; } else { Object.assign(match,condition); }
   return match;
 }
 

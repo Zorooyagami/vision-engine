@@ -52,6 +52,8 @@ function toLiveEvent(e) {
     browser: o.browser || (o.deviceInfo && o.deviceInfo.browser) || null,
     os: (o.deviceInfo && o.deviceInfo.os) || null,
     device: (o.deviceInfo && o.deviceInfo.deviceType) || null, // Desktop | Mobile | Tablet
+    city: (o.deviceInfo && (o.deviceInfo.geo?.city || o.deviceInfo.city)) || null,
+    country: (o.deviceInfo && (o.deviceInfo.geo?.country || o.deviceInfo.country)) || null,
     source: o.trafficSource || null,
     props,
     ts: o.timestamp ? new Date(o.timestamp).getTime() : Date.now(),
