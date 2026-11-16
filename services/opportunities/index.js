@@ -1,215 +1,300 @@
+/*
+ * Revenue Opportunity Radar: observations only.
+ * No estimated revenue, conversion uplift, simulated confidence or inferred sales.
+ * The SDK emits client-side events, which are not proof of settled payments.
+ */
 const Event = require('../../models/Event');
+const BehaviorEvent = require('../../models/BehaviorEvent');
 const OpportunityStatus = require('../../models/OpportunityStatus');
-const {
-  resolveDateRange,
-  applyPlatformDeviceFilter,
-  getPersonaUserIds,
-  applyPersonaFilter,
-} = require('../filterHelpers');
+const { resolveDateRange, applyPlatformDeviceFilter, getPersonaUserIds, applyPersonaFilter } = require('../filterHelpers');
 
-const EVENT_SET = ['product_view', 'add_to_cart', 'view_cart', 'checkout_start', 'shipping_details', 'purchase', 'remove_from_cart'];
-const VALID_STATUSES = new Set(['new', 'investigating', 'planned', 'in_progress', 'resolved', 'dismissed']);
-const safeNumber = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
-const pct = (n, d) => d ? Math.round((n / d) * 1000) / 10 : 0;
-const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
-const toSlug = (v) => String(v || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 90) || 'unknown';
+const EVENTS = ['product_view', 'add_to_cart', 'view_cart', 'checkout_start', 'shipping_details', 'purchase'];
+const STATUSES = new Set(['new', 'investigating', 'planned', 'in_progress', 'resolved', 'dismissed']);
+const LIMIT = 50000;
+const ratio = (num, denom) => denom ? Math.round(num / denom * 1000) / 10 : 0;
+const slug = (value) => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+const err = (message, status) => Object.assign(new Error(message), { status });
+const text = (value) => typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
 
-function extractProducts(event) {
-  const p = event.properties || {};
-  const candidates = Array.isArray(p.products) ? p.products : Array.isArray(p.items) ? p.items : null;
-  if (candidates?.length) return candidates.map((item) => ({
-    id: item.productId || item.product_id || item.item_id || item.id || item.sku || item.title || item.name,
-    name: item.productName || item.product_name || item.title || item.name || item.product?.name || item.product?.title,
-    price: safeNumber(item.price || item.unitPrice || item.unit_price || item.product?.price),
-  })).filter((x) => x.id || x.name);
-  const product = p.product && typeof p.product === 'object' ? p.product : {};
-  const id = p.productId || p.product_id || p.item_id || p.sku || p.id || product.id || product.productId || product.sku;
-  const name = p.productName || p.product_name || p.item_name || p.title || p.name || product.name || product.title;
-  if (!id && !name) return [];
-  return [{ id: id || name, name: name || String(id), price: safeNumber(p.price || p.unitPrice || product.price) }];
+function extractProduct(e) {
+  const p = e.properties || {};
+  const embedded = p.product && typeof p.product === 'object' ? p.product : {};
+  // `title` is intentionally excluded: storefront events use it for document.title.
+  const id = text(p.productId ?? p.product_id ?? p.item_id ?? p.sku ?? embedded.productId ?? embedded.id);
+  if (!id) return null; // Don't guess a product ID from page titles or categories.
+  // Never substitute the website/page title as a product name. If the event's
+  // `name` equals the document title, treat it as missing product metadata.
+  const explicitName = text(p.productName || p.product_name || embedded.name);
+  const tentativeName = text(p.name);
+  const pageTitle = text(p.title);
+  const candidateName = explicitName || tentativeName;
+  const name = candidateName && (!pageTitle || candidateName !== pageTitle) ? candidateName : `Product ID: ${id}`;
+  return { id, name, key: slug(id) };
 }
 
-function scoreOpportunity({ impact, confidence, effort }) {
-  // Transparent weighted score: 40% impact, 35% confidence, 25% ease (inverse effort).
-  const ease = ((6 - Math.max(1, Math.min(5, effort))) / 5) * 100;
-  return Math.round((impact * 0.4 + confidence * 0.35 + ease * 0.25) * 10) / 10;
+function observation({ key, type, title, summary, evidence, affectedSessions, recommendation, note, priorityScore, strength, detectionRule, productId }) {
+  return { key, type, title, summary, evidence, affectedSessions, recommendation, note, detectionRule, productId,
+    priorityScore, strength, status: 'new', statusNote: '', evidenceLevel: 'actionable' };
 }
 
-function buildOpportunity({ key, type, title, summary, evidence, impactLow, impactBase, impactHigh, confidence, effort, affectedSessions, product, recommendation, assumptions = [] }) {
-  const impactScore = Math.min(100, Math.round(Math.log10(Math.max(1, impactBase) + 1) * 24));
-  return {
-    key, type, title, summary, evidence, product: product || null,
-    potential: { low: Math.round(impactLow), base: Math.round(impactBase), high: Math.round(impactHigh), currency: 'USD', basis: 'gross revenue scenario' },
-    confidence, effort, impactScore, priorityScore: scoreOpportunity({ impact: impactScore, confidence, effort }),
-    affectedSessions: affectedSessions || 0, recommendation, assumptions,
-    status: 'new', statusNote: '',
-  };
+function orderedStageSessions(sessions, from, to) {
+  let count = 0;
+  for (const session of sessions.values()) {
+    const start = session.first.get(from);
+    const end = session.first.get(to);
+    if (start !== undefined && end !== undefined && end >= start) count++;
+  }
+  return count;
 }
 
 async function buildRadar({ projectId, period = '30d', customRange, platform = 'combined', device, personas = [] }) {
   const { start, end } = resolveDateRange(period, customRange);
-  const match = { projectId, timestamp: { $gte: start, $lt: end }, event: { $in: EVENT_SET } };
+  const match = { projectId, timestamp: { $gte: start, $lt: end }, event: { $in: EVENTS } };
   applyPlatformDeviceFilter(match, platform, device);
-  const personaFilter = await getPersonaUserIds(projectId, personas, start, end);
-  applyPersonaFilter(match, personaFilter);
-
-  // Bound the amount of raw event data processed in memory for busy projects.
-  const events = await Event.find(match)
-    .select('event sessionId userId timestamp path url properties deviceInfo trafficSource')
-    .sort({ timestamp: -1 }).limit(50000).lean();
+  applyPersonaFilter(match, await getPersonaUserIds(projectId, personas, start, end));
+  // Limit+1 is required to distinguish a complete set from a truncated sample.
+  const events = await Event.find(match).select('event sessionId userId timestamp path properties deviceInfo')
+    .sort({ timestamp: 1, _id: 1 }).limit(LIMIT + 1).lean();
+  if (events.length > LIMIT) throw err('More than 50,000 matching events. Select a shorter date range for accurate, complete results.', 413);
 
   const sessions = new Map();
   const products = new Map();
-  const revenueEvents = [];
-  const allAovs = [];
-  const sessionDevice = new Map();
-  const ensureSession = (id) => {
-    if (!sessions.has(id)) sessions.set(id, { stages: new Set(), products: new Map(), userId: null, device: 'Unknown', total: 0, lastPath: null, events: [] });
+  const orderIds = new Set();
+  const currencyTotals = new Map();
+  const quality = { eventCount: events.length, missingSessionIds: 0, missingProductIds: 0,
+    missingOrderIds: 0, duplicatePurchaseEvents: 0,
+    missingCurrencyOrAmount: 0, trackedOrders: 0 };
+  const ensure = (id) => {
+    if (!sessions.has(id)) sessions.set(id, { first: new Map(), products: new Map(), purchased: false });
     return sessions.get(id);
   };
+
   for (const e of events) {
-    if (!e.sessionId) continue;
-    const s = ensureSession(e.sessionId);
-    s.stages.add(e.event); s.userId = e.userId || s.userId;
-    s.device = e.deviceInfo?.deviceType || s.device;
-    s.lastPath = e.path || e.url || s.lastPath;
-    s.events.push(e);
-    if (e.event === 'purchase') {
-      const total = safeNumber(e.properties?.total ?? e.properties?.revenue ?? e.properties?.value);
-      if (total > 0) { revenueEvents.push(total); allAovs.push(total); s.total += total; }
+    if (!e.sessionId) { quality.missingSessionIds++; continue; }
+    const s = ensure(e.sessionId);
+    const when = +new Date(e.timestamp);
+    if (!Number.isFinite(when)) continue;
+    if (!s.first.has(e.event)) s.first.set(e.event, when);
+    if (e.event === 'purchase') s.purchased = true;
+
+    if (e.event === 'product_view' || e.event === 'add_to_cart') {
+      const product = extractProduct(e);
+      if (!product) { quality.missingProductIds++; continue; }
+      if (!products.has(product.key)) products.set(product.key, { ...product, views: new Set(), carts: new Set(), qualifiedCarts: new Set() });
+      const p = products.get(product.key);
+      if (p.name.startsWith('Product ID: ') && !product.name.startsWith('Product ID: ')) p.name = product.name;
+      if (!s.products.has(product.key)) s.products.set(product.key, {});
+      const ps = s.products.get(product.key);
+      if (e.event === 'product_view') { p.views.add(e.sessionId); ps.view = Math.min(ps.view ?? when, when); }
+      if (e.event === 'add_to_cart') {
+        p.carts.add(e.sessionId);
+        if (ps.view !== undefined && when >= ps.view) p.qualifiedCarts.add(e.sessionId);
+      }
     }
-    for (const item of extractProducts(e)) {
-      const id = String(item.id || item.name);
-      const key = toSlug(id);
-      if (!products.has(key)) products.set(key, { key, id, name: String(item.name || id), views: new Set(), carts: new Set(), purchases: new Set(), viewEvents: 0, cartEvents: 0, revenue: 0, price: item.price || 0, sessions: new Set() });
-      const p = products.get(key); p.name = item.name || p.name; p.price = p.price || item.price || 0; p.sessions.add(e.sessionId);
-      if (e.event === 'product_view') { p.views.add(e.sessionId); p.viewEvents += 1; }
-      if (e.event === 'add_to_cart') { p.carts.add(e.sessionId); p.cartEvents += 1; }
-      if (e.event === 'purchase') { p.purchases.add(e.sessionId); p.revenue += safeNumber(e.properties?.total ?? e.properties?.revenue ?? e.properties?.value); }
-      s.products.set(key, p);
+    if (e.event !== 'purchase') continue;
+    const properties = e.properties || {};
+    const orderId = text(properties.orderId || properties.order_id);
+    if (!orderId) { quality.missingOrderIds++; continue; }
+    if (orderIds.has(orderId)) { quality.duplicatePurchaseEvents++; continue; }
+    orderIds.add(orderId);
+    const currency = text(properties.currency).toUpperCase();
+    const raw = properties.total ?? properties.revenue ?? properties.value;
+    const amount = raw === null || raw === undefined || String(raw).trim() === '' ? NaN : Number(raw);
+    if (!/^[A-Z]{3}$/.test(currency) || !Number.isFinite(amount) || amount < 0) {
+      quality.missingCurrencyOrAmount++;
+      continue;
     }
+    currencyTotals.set(currency, (currencyTotals.get(currency) || 0) + amount);
+    quality.trackedOrders++;
   }
 
-  // Historical customer value is calculated separately from the selected window so a
-  // valuable returning customer can still be recognized when their current session abandons.
-  const knownUserIds = [...new Set([...sessions.values()].map((s) => s.userId).filter(Boolean))];
-  const historicalValueRows = knownUserIds.length ? await Event.aggregate([
-    { $match: { projectId, event: 'purchase', userId: { $in: knownUserIds } } },
-    { $group: { _id: '$userId', orders: { $sum: 1 }, revenue: { $sum: { $convert: { input: { $ifNull: ['$properties.total', { $ifNull: ['$properties.revenue', '$properties.value'] }] }, to: 'double', onError: 0, onNull: 0 } } } } },
-  ]) : [];
-  const lifetimeValue = new Map(historicalValueRows.map((row) => [row._id, row]));
-  const highValueUsers = new Set(historicalValueRows.filter((row) => row.orders >= 2 || row.revenue >= 5000).map((row) => row._id));
-  const sessionCount = (eventName) => [...sessions.values()].filter((s) => s.stages.has(eventName)).length;
-  const productViewSessions = sessionCount('product_view');
-  const cartSessions = sessionCount('add_to_cart');
-  const viewCartSessions = sessionCount('view_cart');
-  const checkoutSessions = sessionCount('checkout_start');
-  const purchaseSessions = sessionCount('purchase');
-  const totalRevenue = revenueEvents.reduce((sum, n) => sum + n, 0);
-  const aov = allAovs.length ? totalRevenue / allAovs.length : 0;
+  const countStage = (name) => [...sessions.values()].filter((s) => s.first.has(name)).length;
+  const viewed = countStage('product_view');
+  const cart = countStage('add_to_cart');
+  const viewCart = countStage('view_cart');
+  const checkout = countStage('checkout_start');
+  const purchased = countStage('purchase');
   const opportunities = [];
 
+  // Product observations are session based, deduped, and require the view before the cart.
   for (const p of products.values()) {
-    const views = p.views.size, carts = p.carts.size, purchases = p.purchases.size;
-    if (views >= 20 && pct(carts, views) < 8) {
-      const targetRate = Math.max(pct(carts, views) + 3, Math.min(12, pct(carts, views) * 1.6));
-      const incrementalCarts = Math.max(0, views * (targetRate - pct(carts, views)) / 100);
-      const purchaseRate = cartSessions ? purchaseSessions / cartSessions : 0;
-      const base = incrementalCarts * purchaseRate * aov;
-      opportunities.push(buildOpportunity({
-        key: `product-interest-${p.key}`, type: 'product_interest', title: `${p.name}: product interest isn't becoming cart activity`,
-        summary: 'Product pages receive attention, but relatively few viewed sessions add the item to cart.',
-        evidence: [{ label: 'Product-view sessions', value: views }, { label: 'Add-to-cart sessions', value: carts }, { label: 'Add-to-cart rate', value: `${pct(carts, views)}%` }],
-        impactLow: base * 0.5, impactBase: base, impactHigh: base * 1.8, confidence: views >= 100 ? 78 : 58, effort: 2, affectedSessions: views - carts, product: { id: p.id, name: p.name },
-        recommendation: 'Inspect the product detail page, price/value presentation, availability, imagery and primary CTA. Validate with session replay before choosing a fix.',
-        assumptions: [`Target add-to-cart rate: ${round(targetRate)}% scenario, not a forecast`, `Uses observed overall cart-to-purchase rate (${round(purchaseRate * 100)}%) and observed AOV (₹${Math.round(aov).toLocaleString('en-IN')})`, 'Product identity is inferred from event properties; unlabelled events are excluded from product attribution'],
-      }));
+    const n = p.views.size;
+    if (n < 20) continue;
+    const qualified = p.qualifiedCarts.size;
+    const rate = ratio(qualified, n);
+    const strength = n >= 100 ? 'Larger sample' : 'Limited sample';
+    if (rate < 8) {
+      opportunities.push(observation({ key: `product-interest-${p.key}`, type: 'product_interest',
+        title: `${p.name}: ${rate}% viewed-to-cart rate across ${n} sessions`,
+        summary: `${qualified} of ${n} sessions that viewed this product later added it to cart (${rate}%). This is below the 8% screening threshold; it does not establish why shoppers did not add it.`,
+        evidence: [{ label: 'Product-view sessions', value: n }, { label: 'Sessions with later add-to-cart', value: qualified }, { label: 'Observed add-to-cart rate', value: `${rate}%` }],
+        affectedSessions: n - qualified, strength, productId: p.id,
+        detectionRule: `At least 20 distinct product-view sessions AND later add-to-cart rate below 8%. Observed: ${n} sessions and ${rate}%.`,
+        priorityScore: Math.round(Math.min(100, n / 2) * 0.6 + (100 - rate) * 0.4),
+        recommendation: 'Review the product detail page, availability and add-to-cart flow. Compare with similar products and examine replays before making changes.',
+        note: 'Threshold: at least 20 product-view sessions and less than 8% later adding this item. Events may be missed when tracking is disabled.' }));
     }
   }
 
-  if (cartSessions >= 15 && purchaseSessions / Math.max(1, cartSessions) < 0.35) {
-    const drop = Math.max(0, cartSessions - purchaseSessions);
-    const improvement = Math.min(0.1, Math.max(0.03, (1 - purchaseSessions / cartSessions) * 0.15));
-    const base = drop * improvement * aov;
-    opportunities.push(buildOpportunity({
-      key: 'checkout-completion', type: 'checkout_leakage', title: 'Cart-to-purchase completion is below the opportunity threshold',
-      summary: 'Many sessions add an item to cart but do not reach a recorded purchase in the selected window.',
-      evidence: [{ label: 'Add-to-cart sessions', value: cartSessions }, { label: 'Purchase sessions', value: purchaseSessions }, { label: 'Cart-to-purchase rate', value: `${pct(purchaseSessions, cartSessions)}%` }, { label: 'Checkout starts', value: checkoutSessions }],
-      impactLow: base * 0.5, impactBase: base, impactHigh: base * 1.7, confidence: cartSessions >= 100 ? 80 : 60, effort: 3, affectedSessions: drop,
-      recommendation: 'Compare cart, checkout and purchase journeys by device. Inspect shipping surprises, form validation, payment errors and tracking gaps before attributing the drop-off to UX.',
-      assumptions: [`Scenario assumes recovering ${round(improvement * 100)}% of the cart-to-purchase gap`, `Uses observed AOV (₹${Math.round(aov).toLocaleString('en-IN')})`, 'Sessions are counted once per stage; events in different reporting windows may not represent a single ordered funnel'],
-    }));
+  // This is not a strict abandoned-cart metric: event-stage totals may overlap, and purchases
+  // can occur in a different visit. Only flag sessions that recorded cart before window end.
+  const cartNoPurchase = [...sessions.values()].filter((s) => s.first.has('add_to_cart') && !s.purchased).length;
+  if (cart >= 15 && cartNoPurchase >= 5) {
+    opportunities.push(observation({ key: 'cart-without-purchase', type: 'checkout_leakage',
+      title: 'Sessions added to cart without a recorded purchase',
+      summary: `${cartNoPurchase} of ${cart} add-to-cart sessions had no purchase event in the selected window. They may have purchased later or on another device.`,
+      evidence: [{ label: 'Sessions adding to cart', value: cart }, { label: 'Without purchase event', value: cartNoPurchase }, { label: 'Share without recorded purchase', value: `${ratio(cartNoPurchase, cart)}%` }, { label: 'Checkout-start sessions', value: checkout }],
+      affectedSessions: cartNoPurchase, strength: cart >= 100 ? 'Larger sample' : 'Limited sample',
+      detectionRule: `At least 15 add-to-cart sessions AND at least 5 with no recorded purchase. Observed: ${cart} and ${cartNoPurchase}.`,
+      priorityScore: Math.round(Math.min(100, cart / 2) * 0.6 + ratio(cartNoPurchase, cart) * 0.4),
+      recommendation: 'Inspect the cart-to-payment funnel, payment errors, and tracking completeness. Validate the sessions before calling them abandoned carts.',
+      note: 'Not verified cart abandonment. Cross-session transactions, consent settings, and missing purchase events affect this count.' }));
   }
 
-  for (const p of products.values()) {
-    const views = p.views.size, carts = p.carts.size;
-    if (views >= 20 && pct(carts, views) >= 10 && views <= Math.max(200, productViewSessions * 0.08)) {
-      const extraViews = Math.max(0, Math.min(productViewSessions * 0.05, views * 0.5));
-      const base = extraViews * (carts / Math.max(1, views)) * (purchaseSessions / Math.max(1, cartSessions)) * aov;
-      opportunities.push(buildOpportunity({
-        key: `low-traffic-winner-${p.key}`, type: 'low_traffic_winner', title: `${p.name}: strong conversion with limited exposure`,
-        summary: 'This product converts above the radar threshold but has relatively low qualified traffic.',
-        evidence: [{ label: 'Product-view sessions', value: views }, { label: 'Add-to-cart rate', value: `${pct(carts, views)}%` }, { label: 'Traffic share', value: `${pct(views, Math.max(1, productViewSessions))}%` }],
-        impactLow: base * 0.5, impactBase: base, impactHigh: base * 1.8, confidence: views >= 100 ? 72 : 52, effort: 2, affectedSessions: views, product: { id: p.id, name: p.name },
-        recommendation: 'Test better category placement, internal search ranking, related-product exposure or merchandising. Increase qualified exposure gradually and monitor conversion quality.',
-        assumptions: ['Traffic uplift is a scenario, not a promise', 'Uses current product add-to-cart rate, overall cart-to-purchase rate and observed AOV'],
-      }));
+  // Only flag low-exposure products relative to other products with a usable sample.
+  const eligible = [...products.values()].filter((p) => p.views.size >= 20);
+  const projectRate = ratio(eligible.reduce((sum, p) => sum + p.qualifiedCarts.size, 0), eligible.reduce((sum, p) => sum + p.views.size, 0));
+  const sortedViews = eligible.map((p) => p.views.size).sort((a, b) => a - b);
+  const medianViews = sortedViews.length ? sortedViews[Math.floor((sortedViews.length - 1) / 2)] : 0;
+  if (eligible.length >= 3 && projectRate > 0) for (const p of eligible) {
+    const n = p.views.size;
+    const rate = ratio(p.qualifiedCarts.size, n);
+    if (n <= medianViews && rate >= projectRate * 1.5 && p.qualifiedCarts.size >= 5) {
+      opportunities.push(observation({ key: `low-traffic-winner-${p.key}`, type: 'low_traffic_winner',
+        title: `${p.name}: ${rate}% viewed-to-cart rate versus ${projectRate}% overall`,
+        summary: `${p.qualifiedCarts.size} of ${n} viewing sessions added this product to cart. The rate is ${rate}%, versus ${projectRate}% across tracked products with 20+ viewing sessions. The product had ${n} viewing sessions versus a median of ${medianViews}.`,
+        evidence: [{ label: 'Product-view sessions', value: n }, { label: 'Later add-to-cart sessions', value: p.qualifiedCarts.size }, { label: 'Product add-to-cart rate', value: `${rate}%` }, { label: 'Project-wide product rate', value: `${projectRate}%` }],
+        affectedSessions: n, strength: n >= 100 ? 'Larger sample' : 'Limited sample', productId: p.id,
+        detectionRule: `At least 3 eligible products, product views at/below median (${medianViews}), at least 5 later add-to-cart sessions, and rate at least 1.5× the eligible-product rate (${projectRate}%).`,
+        priorityScore: Math.round(Math.min(100, n / 2) * 0.5 + Math.min(100, rate - projectRate) * 0.5),
+        recommendation: 'Investigate whether the product deserves more visibility. Run a small merchandising experiment; compare add-to-cart and completed purchase outcomes.',
+        note: 'This identifies observed cart interest, not proven sales conversion or revenue upside.' }));
     }
   }
 
-  // Repeated friction proxy: a session repeats checkout-related events or revisits the same path.
-  const frictionSessions = [];
-  for (const [id, s] of sessions) {
-    const checkoutCount = s.events.filter((e) => ['checkout_start', 'shipping_details'].includes(e.event)).length;
-    const paths = s.events.map((e) => e.path).filter(Boolean);
-    const repeatedPath = paths.some((path, i) => paths.indexOf(path) !== i);
-    if ((checkoutCount >= 2 || repeatedPath) && s.stages.has('checkout_start') && !s.stages.has('purchase')) frictionSessions.push({ id, ...s });
+  // Explicit friction events, rather than treating a repeated page view as a defect.
+  const frictionMatch = { projectId, timestamp: { $gte: start, $lt: end }, kind: { $in: ['repeated_click', 'validation_failure', 'javascript_error'] } };
+  // Behavior events store device separately; avoid claiming persona/device parity when filters cannot be applied.
+  if (device && String(device).toLowerCase() !== 'all') {
+    const deviceLabel = String(device).charAt(0).toUpperCase() + String(device).slice(1).toLowerCase();
+    frictionMatch.device = deviceLabel;
+  } else if (platform === 'web') frictionMatch.device = 'Desktop';
+  else if (platform === 'app') frictionMatch.device = { $in: ['Mobile', 'Tablet'] };
+  // Do not combine behavior events with persona-scoped results unless exact session scope can be checked.
+  if (!personas.length) {
+    const problems = await BehaviorEvent.find(frictionMatch).select('sessionId kind path environment').limit(LIMIT + 1).lean();
+    if (problems.length > LIMIT) throw err('More than 50,000 matching friction events. Select a shorter date range.', 413);
+    const checkoutIssues = new Map();
+    for (const b of problems) {
+      if (!b.sessionId || !/\/(cart|checkout|payment)(\/|$)/i.test(b.path || '')) continue;
+      if (!checkoutIssues.has(b.sessionId)) checkoutIssues.set(b.sessionId, new Set());
+      checkoutIssues.get(b.sessionId).add(b.kind);
+    }
+    if (checkoutIssues.size >= 5) {
+      const types = [...new Set([...checkoutIssues.values()].flatMap((s) => [...s]))];
+      opportunities.push(observation({ key: 'checkout-friction-events', type: 'customer_friction',
+        title: 'Explicit interaction errors observed around checkout',
+        summary: `${checkoutIssues.size} sessions had a repeated-click, validation, or JavaScript error event on a cart/checkout/payment URL.`,
+        evidence: [{ label: 'Sessions with error signals', value: checkoutIssues.size }, { label: 'Observed error types', value: types.join(', ') }],
+        affectedSessions: checkoutIssues.size, strength: checkoutIssues.size >= 30 ? 'Larger sample' : 'Limited sample',
+        detectionRule: `At least 5 distinct sessions with explicit friction events on cart, checkout or payment routes. Observed: ${checkoutIssues.size}.`,
+        priorityScore: Math.round(Math.min(100, checkoutIssues.size * 2)),
+        recommendation: 'Review error logs and matching session replays. Confirm which UI element failed and whether it blocked purchases.',
+        note: 'Only explicit SDK friction events on matching URL paths are counted. These are not confirmed bugs.' }));
+    }
   }
-  const highValueFriction = frictionSessions.filter((s) => s.userId && highValueUsers.has(s.userId));
-  if (frictionSessions.length >= 5) {
-    const base = frictionSessions.length * (aov || 0) * 0.05;
-    opportunities.push(buildOpportunity({
-      key: 'repeated-checkout-friction', type: 'customer_friction', title: 'Repeated checkout activity appears in abandoned sessions',
-      summary: 'Some sessions revisit pages or repeat checkout-related events before leaving without a recorded purchase. This is a friction signal, not proof of a UX defect.',
-      evidence: [{ label: 'Sessions with repeat activity', value: frictionSessions.length }, { label: 'High-value customer sessions', value: highValueFriction.length }, { label: 'Sessions without purchase', value: frictionSessions.length }],
-      impactLow: base * 0.4, impactBase: base, impactHigh: base * 1.5, confidence: frictionSessions.length >= 30 ? 65 : 45, effort: 3, affectedSessions: frictionSessions.length,
-      recommendation: 'Open representative session replays where available and segment by device/persona. Confirm the event sequence and exclude legitimate revisits before planning a change.',
-      assumptions: ['Repeat activity is a heuristic based on event sequence/path repetition', 'Potential upside uses 5% of affected sessions and observed AOV; validate before acting'],
-    }));
+
+  // Exploratory observations are NOT asserted problems. They make smaller or
+  // healthy-looking real datasets useful without relaxing actionable thresholds.
+  // Every observation must be backed by recorded events; never synthesize rows.
+  const existing = new Set(opportunities.map((o) => o.key));
+  const explore = (details) => {
+    if (existing.has(details.key)) return;
+    const row = observation(details);
+    row.evidenceLevel = 'exploratory';
+    row.priorityScore = 0; // Don't rank tentative findings above threshold-backed alerts.
+    opportunities.push(row);
+    existing.add(row.key);
+  };
+
+  // Show the most-observed real products, even if they lack enough visits to
+  // conclude they have a problem. Cap this to avoid overwhelming the page.
+  const productSnapshots = [...products.values()].filter((p) => p.views.size > 0)
+    .sort((a, b) => b.views.size - a.views.size || a.key.localeCompare(b.key))
+    .slice(0, 8);
+  for (const p of productSnapshots) {
+    const n = p.views.size;
+    const added = p.qualifiedCarts.size;
+    const rate = ratio(added, n);
+    // If a firm low-engagement alert already exists, avoid repeating the same
+    // product as an exploratory engagement card.
+    if (existing.has(`product-interest-${p.key}`) || existing.has(`low-traffic-winner-${p.key}`)) continue;
+    explore({ key: `product-snapshot-${p.key}`, type: 'product_activity',
+      title: `${p.name}: ${n} product-view session${n === 1 ? '' : 's'}`,
+      summary: `${added} of ${n} sessions that viewed this tracked product subsequently added the same product to cart (${rate}%). ${n < 20 ? 'There are fewer than 20 viewing sessions, so this is descriptive only.' : 'This is an activity snapshot; no low-engagement alert threshold was crossed.'}`,
+      evidence: [{ label: 'Product-view sessions', value: n }, { label: 'Later same-product cart sessions', value: added }, { label: 'Observed viewed-to-cart rate', value: `${rate}%` }],
+      affectedSessions: n, strength: n < 20 ? 'Small sample' : 'Observation', productId: p.id,
+      detectionRule: `Recorded at least one product-view session with a valid product ID. Observed: ${n} viewing sessions. This is not a defect or sales-conversion claim.`,
+      recommendation: 'Review this product alongside the larger-sample products. Keep collecting events before making conversion claims.',
+      note: 'Only tracked sessions are counted. Sessions without product IDs cannot be attributed to products.' });
+  }
+
+  if (cart > 0 && !existing.has('cart-without-purchase')) {
+    explore({ key: 'cart-journey-snapshot', type: 'journey_activity',
+      title: `${cart} sessions added to cart; ${cartNoPurchase} had no recorded purchase`,
+      summary: `${ratio(cartNoPurchase, cart)}% of add-to-cart sessions in this window did not contain a purchase event. This does not prove cart abandonment.`,
+      evidence: [{ label: 'Add-to-cart sessions', value: cart }, { label: 'Without purchase event', value: cartNoPurchase }, { label: 'Checkout-start sessions', value: checkout }],
+      affectedSessions: cart, strength: 'Observation',
+      detectionRule: `At least one real add-to-cart session was recorded. The action threshold (15 cart sessions and 5 without a purchase) was not met; observed ${cart} and ${cartNoPurchase}.`,
+      recommendation: 'Validate tracking of purchases and compare cart and checkout sessions. Investigate only if a sustained pattern emerges.',
+      note: 'Purchase may happen later, elsewhere, or without analytics consent.' });
+  }
+  if (checkout > 0) {
+    const completed = orderedStageSessions(sessions, 'checkout_start', 'purchase');
+    explore({ key: 'checkout-journey-snapshot', type: 'journey_activity',
+      title: `${checkout} checkout-start sessions; ${completed} later recorded a purchase`,
+      summary: `In ${completed} sessions, a recorded purchase followed checkout start within the selected period (${ratio(completed, checkout)}% of checkout-start sessions). This is not a verified payment-success rate.`,
+      evidence: [{ label: 'Checkout-start sessions', value: checkout }, { label: 'Later purchase event in same session', value: completed }, { label: 'Observed same-session rate', value: `${ratio(completed, checkout)}%` }],
+      affectedSessions: checkout, strength: 'Observation',
+      detectionRule: 'At least one checkout-start session was recorded. Only event order within the same session is checked.',
+      recommendation: 'Check payment and order confirmation logs before interpreting this ratio as checkout conversion.',
+      note: 'Events can be missed and client-side purchases are not settlement proof.' });
+  }
+  if (quality.missingProductIds > 0) {
+    explore({ key: 'product-metadata-coverage', type: 'data_quality',
+      title: `${quality.missingProductIds} product events could not be assigned to a product`,
+      summary: `These real product-view or add-to-cart events did not carry a usable product ID. Product-level analysis may therefore be incomplete.`,
+      evidence: [{ label: 'Product events missing ID', value: quality.missingProductIds }, { label: 'Matching analytics events examined', value: quality.eventCount }],
+      affectedSessions: 0, strength: 'Tracking coverage',
+      detectionRule: 'At least one recorded product_view or add_to_cart event lacks productId/product_id/item_id/sku.',
+      recommendation: 'Send a stable productId and optional productName with product_view and add_to_cart events.',
+      note: 'This is an instrumentation finding, not shopper friction.' });
   }
 
   const keys = opportunities.map((o) => o.key);
-  const saved = keys.length ? await OpportunityStatus.find({ projectId, opportunityKey: { $in: keys } }).lean() : [];
-  const savedMap = new Map(saved.map((s) => [s.opportunityKey, s]));
-  const enriched = opportunities.map((o) => {
-    const status = savedMap.get(o.key);
-    return { ...o, status: status?.status || 'new', statusNote: status?.note || '', updatedAt: status?.updatedAt || null };
-  }).sort((a, b) => b.priorityScore - a.priorityScore);
-
-  // Conservative portfolio roll-up: product-level estimates can overlap with
-  // the broad checkout/friction estimate, so do not add those buckets together.
-  // Sum distinct product-level opportunities, then compare that subtotal with
-  // the largest site-wide checkout/friction scenario and retain the larger bucket.
-  const openOpportunities = enriched.filter((o) => !['dismissed', 'resolved'].includes(o.status));
-  const productBucket = openOpportunities.filter((o) => ['product_interest', 'low_traffic_winner'].includes(o.type)).reduce((acc, o) => ({ low: acc.low + o.potential.low, base: acc.base + o.potential.base, high: acc.high + o.potential.high }), { low: 0, base: 0, high: 0 });
-  const journeyBucket = openOpportunities.filter((o) => ['checkout_leakage', 'customer_friction'].includes(o.type)).reduce((max, o) => ({ low: Math.max(max.low, o.potential.low), base: Math.max(max.base, o.potential.base), high: Math.max(max.high, o.potential.high) }), { low: 0, base: 0, high: 0 });
-  const totalPotential = { low: Math.round(Math.max(productBucket.low, journeyBucket.low)), base: Math.round(Math.max(productBucket.base, journeyBucket.base)), high: Math.round(Math.max(productBucket.high, journeyBucket.high)) };
-  return {
-    generatedAt: new Date().toISOString(), period, range: { from: start.toISOString(), to: end.toISOString() },
-    summary: { opportunities: enriched.filter((o) => !['dismissed', 'resolved'].includes(o.status)).length, highPriority: enriched.filter((o) => o.priorityScore >= 65 && !['dismissed', 'resolved'].includes(o.status)).length, totalPotential, revenueObserved: Math.round(totalRevenue), averageOrderValue: Math.round(aov), sessions: sessions.size, productViewSessions, cartSessions, viewCartSessions, checkoutSessions, purchaseSessions, dataTruncated: events.length >= 50000 },
-    opportunities: enriched,
-  };
+  const stored = keys.length ? await OpportunityStatus.find({ projectId, opportunityKey: { $in: keys } }).lean() : [];
+  const storedMap = new Map(stored.map((s) => [s.opportunityKey, s]));
+  const annotated = opportunities.map((o) => ({ ...o, status: storedMap.get(o.key)?.status || 'new',
+    statusNote: storedMap.get(o.key)?.note || '' })).sort((a, b) => b.priorityScore - a.priorityScore);
+  const trackedValues = [...currencyTotals].map(([currency, amount]) => ({ currency, amount: Math.round(amount * 100) / 100 }));
+  return { generatedAt: new Date().toISOString(), period, range: { from: start.toISOString(), to: end.toISOString() },
+    summary: { opportunities: annotated.filter((o) => !['resolved', 'dismissed'].includes(o.status)).length,
+      actionableSignals: annotated.filter((o) => o.evidenceLevel === 'actionable' && !['resolved', 'dismissed'].includes(o.status)).length,
+      exploratoryObservations: annotated.filter((o) => o.evidenceLevel === 'exploratory' && !['resolved', 'dismissed'].includes(o.status)).length,
+      sessions: sessions.size, productViewSessions: viewed, cartSessions: cart, viewCartSessions: viewCart,
+      checkoutSessions: checkout, purchaseSessions: purchased,
+      viewToCartSessions: orderedStageSessions(sessions, 'product_view', 'add_to_cart'),
+      cartToCheckoutSessions: orderedStageSessions(sessions, 'add_to_cart', 'checkout_start'),
+      checkoutToPurchaseSessions: orderedStageSessions(sessions, 'checkout_start', 'purchase'),
+      trackedPurchaseValues: trackedValues, quality }, opportunities: annotated };
 }
 
 async function updateOpportunityStatus({ projectId, opportunityKey, status, note = '' }) {
-  if (!VALID_STATUSES.has(status)) throw Object.assign(new Error('Invalid opportunity status'), { status: 400 });
-  if (!opportunityKey || typeof opportunityKey !== 'string' || opportunityKey.length > 180) throw Object.assign(new Error('Invalid opportunity key'), { status: 400 });
-  const safeNote = String(note || '').slice(0, 1000);
-  return OpportunityStatus.findOneAndUpdate(
-    { projectId, opportunityKey },
-    { $set: { status, note: safeNote, updatedAt: new Date() } },
-    { upsert: true, new: true, runValidators: true },
-  ).lean();
+  if (!STATUSES.has(status)) throw err('Invalid opportunity status', 400);
+  if (!opportunityKey || typeof opportunityKey !== 'string' || opportunityKey.length > 180) throw err('Invalid opportunity key', 400);
+  return OpportunityStatus.findOneAndUpdate({ projectId, opportunityKey },
+    { $set: { status, note: String(note || '').slice(0, 1000), updatedAt: new Date() } },
+    { upsert: true, new: true, runValidators: true }).lean();
 }
 
 module.exports = { buildRadar, updateOpportunityStatus };

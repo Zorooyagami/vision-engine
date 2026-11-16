@@ -9,7 +9,7 @@ async function loadWindow(f,start,end){const match={projectId:f.projectId,timest
  if(f.personas.some(p=>p.startsWith('dynamic:')))applyPersonaFilter(match,await getPersonaUserIds(f.projectId,f.personas,start,end));
  const cap=Math.min(500000,Math.max(1000,Number(process.env.INTELLIGENCE_MAX_EVENTS)||100000));
  const [events,loyal,firsttime]=await Promise.all([
- Event.find(match).select('sessionId userId timestamp event deviceInfo.deviceType properties.total properties.currency').sort({timestamp:1,_id:1}).limit(cap+1).maxTimeMS(20000).lean(),
+ Event.find(match).select('sessionId userId timestamp event deviceInfo.deviceType properties.total properties.currency properties.orderId properties.order_id properties.environment').sort({timestamp:1,_id:1}).limit(cap+1).maxTimeMS(20000).lean(),
  getPersonaUserIds(f.projectId,['loyal'],start,end),getPersonaUserIds(f.projectId,['firsttime'],start,end)]);
  if(events.length>cap)throw invalid(`This selection exceeds ${cap} events. Choose a shorter period or narrower filters.`,413);
  return buildSessions(events,loyal.ids,firsttime.ids);}

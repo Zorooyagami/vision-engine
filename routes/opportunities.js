@@ -20,12 +20,15 @@ router.get('/', async (req, res) => {
     res.status(error.status || 500).json({ error: error.message || 'Failed to build revenue opportunity radar' });
   }
 });
-router.patch('/:key/status', async (req, res) => {
+const changeOpportunityStatus = async (req, res) => {
   try {
     const result = await updateOpportunityStatus({ projectId: req.projectId, opportunityKey: req.params.key, status: req.body?.status, note: req.body?.note });
     res.json({ opportunity: { key: result.opportunityKey, status: result.status, note: result.note, updatedAt: result.updatedAt } });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message || 'Failed to update opportunity' });
   }
-});
+};
+// PUT is supported alongside PATCH for deployments where PATCH preflights are blocked.
+router.put('/:key/status', changeOpportunityStatus);
+router.patch('/:key/status', changeOpportunityStatus);
 module.exports = router;

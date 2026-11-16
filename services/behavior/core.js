@@ -6,7 +6,6 @@ function str(v,max=100) { return typeof v==='string'?v.slice(0,max):''; }
 function id(v) { return typeof v==='string' && /^[a-zA-Z0-9_:.@-]{1,160}$/.test(v) ? v : ''; }
 function normalizeEvent(input,projectId,now=new Date()) {
  if(!input || !KINDS.includes(input.kind) || !id(input.eventId) || !id(input.sessionId) || !id(input.visitorId)) throw invalid('Invalid behavior event identity or kind');
- if(!['demo','production'].includes(input.environment))throw invalid('Specify demo or production environment');
  const timestamp=new Date(input.timestamp);
  if(!Number.isFinite(+timestamp)||+timestamp>+now+60000||+timestamp<+now-90*86400000)throw invalid('Event timestamp outside accepted 90-day window');
  const d=input.data||{},data={};
@@ -25,7 +24,7 @@ function normalizeEvent(input,projectId,now=new Date()) {
    data.code=str(d.code,80).replace(/[^a-zA-Z0-9_.:-]/g,'');
    if(Number.isSafeInteger(d.count))data.count=Math.min(100,d.count);
  }
- return {projectId,eventId:input.eventId,kind:input.kind,environment:input.environment,visitorId:input.visitorId,userId:id(input.userId)||null,sessionId:input.sessionId,timestamp,receivedAt:now,path:str(input.path,300).split(/[?#]/)[0],device:['Desktop','Mobile','Tablet'].includes(input.device)?input.device:'Unknown',data};
+ return {projectId,eventId:input.eventId,kind:input.kind,environment:'production',visitorId:input.visitorId,userId:id(input.userId)||null,sessionId:input.sessionId,timestamp,receivedAt:now,path:str(input.path,300).split(/[?#]/)[0],device:['Desktop','Mobile','Tablet'].includes(input.device)?input.device:'Unknown',data};
 }
 function validateRule(rule) {
  if(!rule || !Number.isInteger(rule.windowDays)||rule.windowDays<1||rule.windowDays>90 || !Array.isArray(rule.conditions)||!rule.conditions.length||rule.conditions.length>6)throw invalid('Rules need a 1–90 day window and 1–6 conditions');

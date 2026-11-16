@@ -10,6 +10,8 @@ const InsightSnapshotSchema = new mongoose.Schema({
   generatedAt: { type: Date, default: Date.now },
   insights: [{ type: mongoose.Schema.Types.Mixed }],
   rawFacts: { type: mongoose.Schema.Types.Mixed },
+  mode: { type: String, enum: ['ai', 'rules', 'no-data'], default: 'ai' },
+  notice: String,
 });
 
 // Keep only the latest generated snapshot for each project/window pair.

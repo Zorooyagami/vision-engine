@@ -658,32 +658,40 @@ const insightSchema = {
   },
 };
 
+function evidenceInsights(facts) {
+  const c = facts?.generic?.current || {};
+  const p = facts?.generic?.previous || {};
+  const sessions = Number(c.overallSessionCount || 0);
+  if (!sessions) return [];
+  const result = [];
+  const add = (text, sentiment='neutral', screen='conversion', metric='Conversion Rate') => result.push({
+    sentiment, text, screen, decisionTitle: 'Review observed customer activity',
+    suggestion: 'Open the linked report and inspect the underlying tracked sessions before taking action.',
+    decisionMetric: metric, decisionPersonas: [], source: 'rules'
+  });
+  add(`${sessions} sessions were observed in this reporting window. The previous equal-length window recorded ${Number(p.overallSessionCount || 0)} sessions.`, 'neutral', 'personas');
+  if (Number.isFinite(c.overallConversionRate)) add(`${(100*c.overallConversionRate).toFixed(1)}% tracked purchase events per session (event count divided by session count). This is not a verified order conversion rate.`, 'neutral', 'conversion');
+  if (Number.isFinite(c.bounceRate)) add(`${(100*c.bounceRate).toFixed(1)}% of sessions contained a single analytics event. This can include incomplete tracking and is not proof that visitors abandoned the site.`, 'neutral', 'alerts');
+  const devices = Array.isArray(c.deviceSplit) ? c.deviceSplit.filter(d=>d._id && d.count>0) : [];
+  if (devices.length) add(`The largest recorded device group was ${String(devices[0]._id)} with ${Number(devices[0].count)} tracked events (not distinct sessions).`, 'neutral', 'personas');
+  return result;
+}
 async function synthesizeInsights(facts) {
-  const model = getModel();
-
+  if (!Number(facts?.generic?.current?.overallSessionCount || 0)) return { insights: [], mode: 'no-data' };
   try {
     const response = await getAi().models.generateContent({
-      model,
+      model: getModel(),
       contents: `${SYSTEM_PROMPT}\n\nFacts:\n${JSON.stringify(facts)}`,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: insightSchema,
-      },
+      config: { responseMimeType: 'application/json', responseSchema: insightSchema },
     });
-    console.log("response from Gemini:", response);
-    const text = response.text;
-    const parsed = JSON.parse(text);
-
-    return parsed.filter(
-      (i) => i.text && i.sentiment && i.decisionTitle && Array.isArray(i.decisionPersonas)
-    );
-  } catch (err) {
-    console.error(
-      `Gemini insight generation failed (model: ${model}), falling back to empty set:`,
-      err && err.message ? err.message : err
-    );
-    return [];
+    const parsed = JSON.parse(response.text);
+    if (!Array.isArray(parsed)) throw new Error('AI response was not an array');
+    const insights = parsed.filter(i => i && i.text && i.sentiment && i.decisionTitle && Array.isArray(i.decisionPersonas));
+    if (!insights.length) throw new Error('AI returned no valid insights');
+    return { insights: insights.map(i => ({...i, source: 'ai'})), mode: 'ai' };
+  } catch (error) {
+    console.warn('[insights] AI unavailable; using observed metrics:', error?.message);
+    return { insights: evidenceInsights(facts), mode: 'rules', notice: 'AI generation unavailable. Showing deterministic observations calculated from tracked data.' };
   }
 }
-
-module.exports = { synthesizeInsights };
+module.exports = { synthesizeInsights, evidenceInsights };

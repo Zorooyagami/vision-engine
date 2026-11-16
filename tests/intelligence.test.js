@@ -18,7 +18,7 @@ test('mixed currencies and invalid amounts are withheld, unspecified currency ha
  assert.equal(snapshot([event('a','purchase',20,'GBP'),event('b','purchase',30,'EUR')]).current.revenue,null);
  assert.equal(snapshot([event('a','purchase',null)]).current.revenue,null);
  const prior=process.env.DASHBOARD_CURRENCY;delete process.env.DASHBOARD_CURRENCY;
- try{const s=snapshot([event('a','purchase',20,'')]);assert.equal(s.currency,null);assert.equal(s.current.revenue,20);}finally{if(prior!==undefined)process.env.DASHBOARD_CURRENCY=prior;}
+ try{const s=snapshot([event('a','purchase',20,'')]);assert.equal(s.currency,null);assert.equal(s.current.revenue,null);}finally{if(prior!==undefined)process.env.DASHBOARD_CURRENCY=prior;}
 });
 test('journeys collapse repeats and end at first purchase; neighbour totals reconcile',()=>{
  const rows=buildSessions([event('a','page_view'),event('a','page_view'),event('a','checkout_start'),event('a','purchase'),event('a','product_view'),event('b','checkout_start')]).rows;
@@ -30,10 +30,10 @@ test('journeys collapse repeats and end at first purchase; neighbour totals reco
 test('persona precedence, selected persona and missing-session handling',()=>{
  const data=buildSessions([event('a','page_view',0,'GBP',{userId:'u'}),event('b','page_view'),event(null,'page_view')],new Set(['u']),new Set(['u']));
  assert.equal(data.rows[0].persona,'loyal');assert.equal(data.missingSessionEvents,1);
- const s=makeSnapshot(data,buildSessions([]),{...filters,personas:['guest']});assert.equal(s.current.sessions,1);assert.equal(s.current.guestSessions,1);assert.equal(s.warnings.length,1);
+ const s=makeSnapshot(data,buildSessions([]),{...filters,personas:['guest']});assert.equal(s.current.sessions,1);assert.equal(s.current.guestSessions,1);assert.ok(s.warnings.some(w=>w.includes('session IDs')));
 });
 test('empty data is finite and questions return supported evidence only',()=>{
- const s=snapshot([]);assert.equal(s.current.conversion,0);assert.equal(s.current.aov,0);
+ const s=snapshot([]);assert.equal(s.current.conversion,0);assert.equal(s.current.aov,null);
  assert.equal(localIntent('How many sessions purchased?'),'journeys');assert.equal(localIntent('Forecast profit next month'),'unsupported');
  assert.equal(reply('unsupported',s).evidence.length,0);assert.equal(reply('summary',s).evidence[0].value,0);
  assert.equal(JSON.stringify(reply('summary',s)).includes('userId'),false);
@@ -52,4 +52,23 @@ test('queries preserve project and time boundaries; conflicting filters and over
  assert.throws(()=>service.readFilters({...req,query:{...req.query,personas:'invalid'}}),/persona/);
  const previous=process.env.INTELLIGENCE_MAX_EVENTS;process.env.INTELLIGENCE_MAX_EVENTS='1000';rows=Array(1001).fill(event('a','page_view'));
  try{await assert.rejects(service.loadWindow(f,f.start,f.end),e=>e.status===413);}finally{if(previous===undefined)delete process.env.INTELLIGENCE_MAX_EVENTS;else process.env.INTELLIGENCE_MAX_EVENTS=previous;}
+});
+
+test('legacy demo-labelled purchase events count as tracked purchase values',()=>{
+ const s=snapshot([event('demo','purchase',450,'INR',{properties:{total:450,currency:'INR',environment:'demo',orderId:'DEMO-1'}})]);
+ assert.equal(s.current.purchasingSessions,1);
+ assert.equal(s.current.orders,1);
+ assert.equal(s.moneyAvailable,true);
+ assert.equal(s.current.revenue,450);
+});
+test('duplicate non-demo order IDs do not inflate totals, explicit currency is mandatory',()=>{
+ const e=(session,total,id,currency='INR')=>({sessionId:session,event:'purchase',properties:{total,orderId:id,currency,environment:'production'}});
+ const s=snapshot([e('a',100,'ORD-1'),e('a',100,'ORD-1'),e('b',50,'ORD-2')]);
+ assert.equal(s.current.orders,2);
+ assert.equal(s.current.revenue,150);
+ assert.equal(s.quality.duplicates,1);
+ assert.equal(s.moneyAvailable,true);
+ const invalid=snapshot([e('a',100,'ORD-1','')]);
+ assert.equal(invalid.moneyAvailable,false);
+ assert.equal(invalid.current.revenue,null);
 });
