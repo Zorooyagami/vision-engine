@@ -36,8 +36,8 @@ async function ingestEvents(req, res) {
 
     const heatmapsEnabled = req.project?.settings?.heatmaps !== false;
     const analyticsEnabled = req.project?.settings?.analytics !== false;
-    if (!analyticsEnabled) {
-      return res.status(403).json({ error: 'Analytics collection is disabled for this project' });
+    if (!analyticsEnabled && !heatmapsEnabled) {
+      return res.status(403).json({ error: 'Event collection is disabled for this project' });
     }
 
     const ip = req.ip;
@@ -48,7 +48,7 @@ async function ingestEvents(req, res) {
       const timestamp = event?.timestamp ? validTimestamp(event.timestamp) : null;
       const isHeatmap = event?.event === 'heatmap_click' || event?.event === 'heatmap_move';
 
-      if (!event?.event || !event?.sessionId || !timestamp || (isHeatmap && !heatmapsEnabled)) {
+      if (!event?.event || !event?.sessionId || !timestamp || ((isHeatmap && !heatmapsEnabled) || (!isHeatmap && !analyticsEnabled))) {
         rejected += 1;
         continue;
       }
@@ -199,7 +199,11 @@ async function getSdkConfig(req, res) {
       .filter(Boolean);
 
     res.set('Cache-Control', 'public, max-age=30');
-    res.json({ version, definitions, editorOrigins });
+    res.json({ version, definitions, editorOrigins, settings: {
+      analytics: req.project.settings?.analytics !== false,
+      heatmaps: req.project.settings?.heatmaps !== false,
+      sessionReplay: req.project.settings?.sessionReplay !== false,
+    } });
   } catch (err) {
     console.error('[events] sdk config error:', err);
     res.status(500).json({ error: 'failed to load sdk config' });
