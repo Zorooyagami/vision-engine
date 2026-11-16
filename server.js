@@ -10,12 +10,9 @@ const requireProject = require('./middleware/requireProject').requireProject
 const app = express()
 app.set('trust proxy', true)
 
-app.use(cors({
-  origin: [
-    'https://vision-engine-insights.web.app',
-    'http://localhost:5173',
-    'http://localhost:5174',
-  ],
+
+const corsOptions = {
+  origin: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type',
@@ -23,8 +20,11 @@ app.use(cors({
     'X-Project-Id',
   ],
   optionsSuccessStatus: 204,
-}));
+};
 
+// Must be registered before all routes
+app.use(cors(corsOptions))
+// app.options('*', cors(corsOptions))
 // Session-replay ingest sends a binary (zlib) body and parses it with
 // express.raw() inside the router, so it must be mounted BEFORE express.json().
 app.use('/api/record', require('./routes/record'))

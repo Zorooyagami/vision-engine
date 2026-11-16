@@ -42,7 +42,7 @@ router.get(
   getProjectHandler
 )
 
-router.patch(
+router.put(
   '/projects/:projectId',
   updateProjectHandler
 )
