@@ -25,9 +25,20 @@ function rules(question, previous) {
   const followup = /^(and\b|what about\b|how about\b|now\b|instead\b|same\b|break (?:it|that)\b|show (?:it|that|this)\b)/.test(q);
   let p = { ...BASE, ...(followup && previous ? validatePlan(previous) : {}) };
   if (followup && !previous && !/revenue|conversion|orders|sessions|events|funnel|page/.test(q)) return { ...p, status: 'clarify', message: 'Which metric should I analyse? Try “Revenue for mobile this week”.' };
-  if (/profit|forecast|predict|refund|payment fail|address|error rate|campaign|retention|lifetime value|\bltv\b|\bcountry\b|\bcity\b|bounce|duration|latency|\bsku\b|best.?selling|top products|product revenue|product sales|\bemail\b|phone number|ip address|delete|update database|ignore (all|previous)|system prompt|other project/.test(q)) return { ...p, status: 'unsupported', message: 'This needs data or permissions outside the supported analytics. I can analyse sessions, revenue, conversion, tracked funnels, personas, devices, browsers, recorded traffic sources, page views and event counts.' };
+  if (/profit|forecast|predict|refund|payment fail|\baddress\b|error rate|campaign|retention|lifetime value|\bltv\b|bounce|duration|latency|\bsku\b|best.?selling|top products|product revenue|product sales|\bemail\b|phone number|ip address|delete|update database|ignore (all|previous)|system prompt|other project/.test(q)) return { ...p, status: 'unsupported', message: 'This needs data or permissions outside the supported analytics. I can analyse sessions, revenue, conversion, tracked funnels, personas, devices, browsers, recorded traffic sources, page views and event counts.' };
   if (/tomorrow|next week|next month|next year/.test(q)) return { ...p, status: 'unsupported', message: 'Future activity is not available. Ask about an elapsed reporting period.' };
   if (/\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b|last \d+ months?|past \d+ months?|\bandroid\b|\bios\b|\biphone\b/.test(q)) return { ...p, status: 'clarify', message: 'Please use exact YYYY-MM-DD dates and supported device groups: Mobile, Desktop or Tablet. Operating-system filters are not available.' };
+  if (/\bproducts?\b|\bpdp\b/.test(q) && /viewed|views?|seen/.test(q) && /never (?:been )?(?:bought|purchased|ordered)|not (?:been )?(?:bought|purchased|ordered)|no purchases?|zero purchases?|without (?:a )?purchases?|didn.t (?:buy|purchase)/.test(q)) {
+    p.mode = 'product_unpurchased';
+    p.compare = 'none';
+  }
+  // Server-owned specialist analytics: LLM must not translate these into arbitrary database operations.
+  if (/\b(?:cities|city|locations?|countries|country)\b/.test(q) && /user|customer|visitor|session|traffic|audience|where|which|most|top|from/.test(q)) p.mode = 'audience_city';
+  else if (/desktop|mobile|tablet|device/.test(q) && /users?|customers?|visitors?|most|majority|split|share|which|usage|prefer/.test(q) && !/revenue|checkout|conversion|sales|orders|funnel/.test(q)) p.mode = 'audience_device';
+  else if (/\b(?:who|which|top|highest|biggest|most)\b/.test(q) && /user|customer|spender|spent|spend/.test(q) && /spent|spend|spender|revenue|purchas|bought|buy/.test(q)) p.mode = 'top_spenders';
+  else if (/product|item/.test(q) && /(?:remove(?:d|s)?|delet(?:ed|es)?|taken out)\s*(?:from|out of)?\s*(?:the\s*)?(?:cart|basket)|cart remov/.test(q)) p.mode = 'product_cart_removals';
+  else if (/product|item/.test(q) && /(?:add(?:ed|s)?\s*(?:to|into)\s*(?:the\s*)?(?:cart|basket)|cart additions?)/.test(q) && /most|top|which|frequent|popular|highest|number|count/.test(q)) p.mode = 'product_cart_adds';
+  if (['audience_city','audience_device','top_spenders','product_cart_adds','product_cart_removals'].includes(p.mode)) p.compare = 'none';
   const metrics = [];
   if (/revenue|sales|income/.test(q)) metrics.push('revenue');
   if (/average order|\baov\b|basket (size|value)/.test(q)) metrics.push('aov');
@@ -45,15 +56,15 @@ function rules(question, previous) {
   if (/page.?views|pages/.test(q)) metrics.push('page_views');
   if (/events/.test(q)) metrics.push('events');
   if (metrics.length) p.metrics = [...new Set(metrics)].slice(0, 6);
-  if (/funnel|where.*drop|where.*lose|journey/.test(q)) p.mode = 'funnel';
-  else if (/why|explain|contribut|driv/.test(q)) p.mode = 'diagnose';
-  else if (/trend|daily|weekly|over time|per day|per week|by day|by week/.test(q)) { p.mode = 'trend'; p.groupBy = /weekly|per week|by week/.test(q) ? 'week' : 'day'; }
-  else if (/compare|versus|\bvs\b|change|drop|grew|increase|decrease/.test(q)) p.mode = 'compare';
+  if (p.mode === 'summary' && /funnel|where.*drop|where.*lose|journey/.test(q)) p.mode = 'funnel';
+  else if (p.mode === 'summary' && /why|explain|contribut|driv/.test(q)) p.mode = 'diagnose';
+  else if (p.mode === 'summary' && /trend|daily|weekly|over time|per day|per week|by day|by week/.test(q)) { p.mode = 'trend'; p.groupBy = /weekly|per week|by week/.test(q) ? 'week' : 'day'; }
+  else if (p.mode === 'summary' && /compare|versus|\bvs\b|change|drop|grew|increase|decrease/.test(q)) p.mode = 'compare';
   const groups = [['device', /by device|across devices|which device|compare.*devices/], ['persona', /by persona|by customer|which persona|personas|customer groups/], ['browser', /browser/], ['source', /traffic sources?|by source|acquisition/], ['page', /which pages|top(?: \d+)? pages|most.*pages|pages.*most/], ['event', /which events|top(?: \d+)? events|frequent.*events|event breakdown/]];
-  for (const [group, re] of groups) if (re.test(q)) { p.groupBy = group; if (!['diagnose', 'trend'].includes(p.mode)) p.mode = 'breakdown'; }
+  for (const [group, re] of groups) if (p.mode === 'summary' && re.test(q)) { p.groupBy = group; if (!['diagnose', 'trend'].includes(p.mode)) p.mode = 'breakdown'; }
   const devices = DEVICES.filter(x => new RegExp(`\\b${x.toLowerCase()}\\b`).test(q));
   if (devices.length) p.devices = devices;
-  if (devices.length > 1) { p.groupBy = 'device'; p.mode = 'breakdown'; }
+  if (devices.length > 1 && p.mode === 'summary') { p.groupBy = 'device'; p.mode = 'breakdown'; }
   if (/all devices/.test(q)) p.devices = [];
   const personas = PERSONAS.filter(x => (x === 'firsttime' ? /first.?time|new users|new customers/ : new RegExp(`\\b${x}\\b`)).test(q));
   if (personas.length) p.personas = personas;
@@ -67,6 +78,7 @@ function rules(question, previous) {
   const days = q.match(/(?:last|past)\s+(\d+)\s+days?/); if (days) { p.period = 'last_days'; p.days = Number(days[1]); }
   const dates = q.match(/\b\d{4}-\d{2}-\d{2}\b/g); if (dates?.length === 2) { p.period = 'custom'; [p.from, p.to] = dates; }
   if (/\b20\d{2}\b/.test(q) && !dates?.length) return { ...p, status: 'clarify', message: 'Use exact dates, for example “Revenue from 2026-01-01 to 2026-01-31”.' };
+  if (/\b(?:all.time|lifetime|ever|since (?:the )?beginning)\b/.test(q)) p.period = 'all_time';
   if (/last year|year.over.year|yearly|quarter/.test(q)) return { ...p, status: 'clarify', message: 'Choose an exact reporting range. This module compares against the preceding matched period; arbitrary comparison ranges are not supported yet.' };
   if (/table/.test(q)) p.format = 'table'; else if (/line chart/.test(q)) { p.format = 'line'; p.mode = 'trend'; p.groupBy = 'day'; } else if (/bar chart/.test(q)) p.format = 'bar'; else if (/cards/.test(q)) p.format = 'cards';
   if (/no comparison|without compar/.test(q)) p.compare = 'none';
@@ -91,6 +103,8 @@ async function planQuestion(question, previous, generate) {
   const context = previous ? validatePlan(previous) : null;
   let fallback;
   try { fallback = rules(question, context); } catch { fallback = { ...BASE, status: 'clarify', message: 'Use a valid range (1–180 days), 1–20 results, or exact YYYY-MM-DD dates.' }; }
+  // Deterministic product queries bypass the generic LLM schema.
+  if (['product_unpurchased', 'audience_city', 'audience_device', 'top_spenders', 'product_cart_adds', 'product_cart_removals'].includes(fallback.mode) && fallback.status === 'ready') return { plan: fallback, mode: 'rules' };
   // Unsupported operations are rejected before any third-party call.
   if (fallback.status === 'unsupported' || (!process.env.GEMINI_API_KEY && !generate)) return { plan: fallback, mode: 'rules' };
   try {

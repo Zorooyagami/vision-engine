@@ -2,6 +2,8 @@ const { error } = require('./catalog');
 const { planQuestion, validatePlan } = require('./planner');
 const { resolveScope, timezone } = require('./dates');
 const { buildAnswer } = require('./answer');
+const { answerUnpurchasedProducts } = require('./products');
+const { answerSpecialist } = require('./specialist');
 function validateRequest(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw error('Provide a question');
   if (typeof body.question !== 'string' || body.question.trim().length < 3 || body.question.length > 1000) throw error('Use a question of 3–1000 characters');
@@ -17,6 +19,8 @@ async function answerQuestion(body, base, { load, planner = planQuestion, now = 
   const scope = resolveScope(plan, base, request.timezone, now);
   const raw = await load(scope, plan.compare !== 'none');
   if (isCancelled()) throw error('Request cancelled', 499);
+  if (['audience_city', 'audience_device', 'top_spenders', 'product_cart_adds', 'product_cart_removals'].includes(plan.mode)) return answerSpecialist(plan, scope, raw, routing);
+  if (plan.mode === 'product_unpurchased') return answerUnpurchasedProducts(plan, scope, raw, routing);
   return buildAnswer(plan, scope, raw, routing);
 }
 module.exports = { validateRequest, answerQuestion };

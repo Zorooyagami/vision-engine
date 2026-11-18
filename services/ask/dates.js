@@ -40,10 +40,11 @@ function resolveScope(plan, base, zone, now = new Date()) {
   }
   if (plan.period === 'last_month') { end = instant(monthStart, zone); start = instant(shiftDate(monthStart, -1).slice(0, 8) + '01', zone); }
   if (plan.period === 'last_days') { start = new Date(+now - plan.days * DAY); end = now; }
+  if (plan.period === 'all_time') { start = new Date('1970-01-01T00:00:00.000Z'); end = now; }
   if (plan.period === 'custom') { start = instant(plan.from, zone); end = instant(shiftDate(plan.to, 1), zone); }
   if (end > now) end = now;
   if (!Number.isFinite(+start) || !Number.isFinite(+end) || start >= end) throw error('The reporting range must include elapsed time, not only future dates');
-  if (end - start > 181 * DAY) throw error('Choose a reporting period of at most 180 days');
+  if (plan.period !== 'all_time' && end - start > 181 * DAY) throw error('Choose a reporting period of at most 180 days');
   previousStart ||= new Date(+start - (end - start)); previousEnd ||= start;
   const notices = [];
   let devices = plan.devices === null ? (base.device ? [base.device] : []) : plan.devices;

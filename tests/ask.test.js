@@ -140,3 +140,81 @@ test('data loader scopes every query, projects minimal fields and enforces its b
   const old = process.env.ASK_MAX_EVENTS; process.env.ASK_MAX_EVENTS = '1000'; eventRows = Array(1001).fill(event('a', 'purchase'));
   try { await assert.rejects(module.exports.loadData(scope), e => e.status === 413); } finally { if (old === undefined) delete process.env.ASK_MAX_EVENTS; else process.env.ASK_MAX_EVENTS = old; }
 });
+
+test('viewed but never bought question is a supported deterministic intent', async () => {
+  const p = rules('Can you tell which products were viewed but never bought?');
+  assert.equal(p.status, 'ready'); assert.equal(p.mode, 'product_unpurchased');
+  const routing = await planQuestion('Which products were viewed but never bought?', null, async () => { throw new Error('Gemini should not run'); });
+  assert.equal(routing.plan.mode, 'product_unpurchased');
+});
+
+test('product answer matches line-item product IDs and does not invent purchases', () => {
+  const { answerUnpurchasedProducts } = require('../services/ask/products');
+  const p = rules('Which products were viewed but never bought?');
+  const result = answerUnpurchasedProducts(p, scope, raw([
+    event('a', 'product_view', { properties: { productId: 'A', productName: 'Bag' } }),
+    event('b', 'product_view', { properties: { productId: 'B', productName: 'Watch' } }),
+    event('c', 'purchase', { properties: { products: [{ productId: 'B', quantity: 1 }] } }),
+  ]), { mode: 'rules' });
+  assert.equal(result.status, 'ready');
+  assert.deepEqual(result.blocks[0].rows.map(x => x.productId), ['A']);
+  assert.equal(result.blocks[0].rows[0].views, 1);
+  assert.ok(!JSON.stringify(result).includes('sessionId'));
+});
+
+test('product answer flags purchase data without line items as incomplete', () => {
+  const { answerUnpurchasedProducts } = require('../services/ask/products');
+  const result = answerUnpurchasedProducts(rules('Which products were viewed but never bought?'), scope, raw([
+    event('a', 'view_item', { properties: { productId: 'A' } }),
+    event('b', 'purchase', { properties: { total: 20 } }),
+  ]), { mode: 'rules' });
+  assert.match(result.warnings.join(' '), /coverage is incomplete/);
+});
+
+test('specialist questions route deterministically without AI', async () => {
+  const cases = [
+    ['From which city are most of our users?', 'audience_city'],
+    ['Are most users on desktop or mobile?', 'audience_device'],
+    ['Which user spent the most?', 'top_spenders'],
+    ['Which product is removed from cart the most in lifetime?', 'product_cart_removals'],
+    ['Which product is added to cart most?', 'product_cart_adds'],
+  ];
+  for (const [question, mode] of cases) {
+    const plan = rules(question);
+    assert.equal(plan.status, 'ready', question);
+    assert.equal(plan.mode, mode, question);
+    const route = await planQuestion(question, null, async () => { throw Error('AI should not run'); });
+    assert.equal(route.plan.mode, mode);
+  }
+  assert.equal(rules('Which product is removed from cart the most in lifetime?').period, 'all_time');
+});
+
+test('specialist answers report real city and device sessions, spend and cart actions', () => {
+  const { answerSpecialist } = require('../services/ask/specialist');
+  const data = raw([
+    event('a', 'page_view', { userId:'u1', deviceInfo: { deviceType:'Desktop', geo:{ city:'London', country:'UK' } } }),
+    event('b', 'page_view', { userId:'u2', deviceInfo: { deviceType:'Mobile', geo:{ city:'London', country:'UK' } } }),
+    event('c', 'page_view', { userId:'u3', deviceInfo: { deviceType:'Mobile', geo:{ city:'Manchester', country:'UK' } } }),
+    event('a', 'purchase', { userId:'u1', properties:{ total:100, currency:'GBP' } }),
+    event('b', 'purchase', { userId:'u2', properties:{ total:40, currency:'GBP' } }),
+    event('a', 'add_to_cart', { userId:'u1', properties:{ productId:'p1', productName:'Jacket', quantity:2 } }),
+    event('b', 'add_to_cart', { userId:'u2', properties:{ productId:'p1', productName:'Jacket' } }),
+    event('c', 'remove_from_cart', { userId:'u3', properties:{ productId:'p2', productName:'Shoes' } }),
+  ]);
+  const answer = q => answerSpecialist(rules(q), scope, data, { mode:'rules' });
+  assert.equal(answer('Which city has the most users?').blocks[0].rows[0][0], 'London, UK');
+  assert.equal(answer('Which device has most users?').blocks[0].rows[0][0], 'Mobile');
+  assert.equal(answer('Which user spent the most?').blocks[0].rows[0][0], 'u1');
+  assert.equal(answer('Which product is added to cart most?').blocks[0].rows[0][2], 2);
+  assert.equal(answer('Which product is removed from cart most?').blocks[0].rows[0][1], 'p2');
+});
+
+test('mixed currencies cannot rank spenders and missing location is not invented', () => {
+  const { answerSpecialist } = require('../services/ask/specialist');
+  const data = raw([event('a','purchase',{userId:'one',properties:{total:20,currency:'GBP'}}),event('b','purchase',{userId:'two',properties:{total:50,currency:'EUR'}})]);
+  const result = answerSpecialist(rules('Which user spent the most?'), scope, data, {mode:'rules'});
+  assert.equal(result.blocks.length, 0);
+  assert.match(result.warnings.join(' '), /Multiple currencies/);
+  const city = answerSpecialist(rules('Which city has the most users?'), scope, data, {mode:'rules'});
+  assert.equal(city.blocks[0].rows[0][0], 'Unknown');
+});

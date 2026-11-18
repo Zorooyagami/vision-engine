@@ -17,10 +17,10 @@ const METRICS = {
   purchasing_sessions: { label: 'Purchasing sessions', unit: 'count' },
 };
 const GROUPS = ['none', 'device', 'persona', 'day', 'week', 'browser', 'source', 'page', 'event'];
-const MODES = ['summary', 'compare', 'trend', 'breakdown', 'funnel', 'diagnose'];
+const MODES = ['summary', 'compare', 'trend', 'breakdown', 'funnel', 'diagnose', 'product_unpurchased', 'audience_city', 'audience_device', 'top_spenders', 'product_cart_adds', 'product_cart_removals'];
 const DEVICES = ['Desktop', 'Mobile', 'Tablet', 'Unknown'];
 const PERSONAS = ['loyal', 'firsttime', 'active', 'guest'];
-const PERIODS = ['selected', 'today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'last_days', 'custom'];
+const PERIODS = ['selected', 'today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'last_days', 'custom', 'all_time'];
 const FORMATS = ['auto', 'cards', 'bar', 'line', 'table', 'funnel'];
 const STAGES = ['product_view', 'add_to_cart', 'view_cart', 'checkout_start', 'purchase'];
 const STAGE_LABELS = { product_view: 'Product view', add_to_cart: 'Add to cart', view_cart: 'Cart', checkout_start: 'Checkout', purchase: 'Purchase' };

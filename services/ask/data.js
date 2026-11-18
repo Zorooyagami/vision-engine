@@ -8,7 +8,7 @@ async function loadData(scope, comparison = true) {
   const projectId = scope.projectId;
   // All executable queries are server-owned and always project scoped.
   const eventPromise = Event.find({ projectId, $or: windows.map(w => ({ timestamp: { $gte: w.start, $lt: w.end } })) })
-    .select('event sessionId userId timestamp deviceInfo.deviceType browser trafficSource path properties.total properties.currency')
+    .select('event sessionId userId timestamp deviceInfo browser trafficSource path properties')
     .sort({ timestamp: 1, _id: 1 }).limit(cap + 1).maxTimeMS(QUERY_TIMEOUT).lean();
   const loyalPromise = Event.aggregate([
     { $match: { projectId, event: 'purchase', userId: { $nin: [null, ''] } } },
