@@ -17,7 +17,9 @@ async function answerQuestion(body, base, { load, planner = planQuestion, now = 
   const plan = validatePlan(routing.plan);
   if (plan.status !== 'ready') return { version: 2, status: plan.status, headline: plan.status === 'clarify' ? 'Let’s narrow the question' : 'This question needs other data', observations: [plan.message || 'Try a question about revenue, sessions, checkout conversion or a tracked funnel.'], cards: [], blocks: [], warnings: [], notes: [], definitions: [], followUps: ['Why did checkout conversion change for mobile this week?', 'Show revenue by persona', 'Show daily sessions for the last 30 days'], context: request.context, mode: routing.mode, notice: routing.notice || null };
   const scope = resolveScope(plan, base, request.timezone, now);
-  const raw = await load(scope, plan.compare !== 'none');
+  // Avoid an expensive lifetime purchase aggregation unless persona classification needs it.
+  const includeLoyal = Array.isArray(scope.personas) && scope.personas.some(p => p !== 'guest');
+  const raw = await load(scope, plan.compare !== 'none', { includeLoyal });
   if (isCancelled()) throw error('Request cancelled', 499);
   if (['audience_city', 'audience_device', 'top_spenders', 'product_cart_adds', 'product_cart_removals'].includes(plan.mode)) return answerSpecialist(plan, scope, raw, routing);
   if (plan.mode === 'product_unpurchased') return answerUnpurchasedProducts(plan, scope, raw, routing);
