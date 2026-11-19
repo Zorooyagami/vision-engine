@@ -38,13 +38,20 @@ function resolveScope(plan, base, zone, now = new Date()) {
     previousEnd = p.day <= lastDay ? instant(priorFirst.slice(0, 8) + String(p.day).padStart(2, '0'), zone, p) : instant(monthStart, zone);
     comparisonLabel = 'Previous month through the matching day/time (capped at month end)';
   }
+  if (plan.period === 'this_year') { start = instant(`${p.year}-01-01`, zone); end = now; }
   if (plan.period === 'last_month') { end = instant(monthStart, zone); start = instant(shiftDate(monthStart, -1).slice(0, 8) + '01', zone); }
+  if (plan.period === 'last_months') {
+    const target = new Date(Date.UTC(p.year, p.month - 1 - plan.months, 1));
+    const y = target.getUTCFullYear(), m = target.getUTCMonth()+1;
+    const last = new Date(Date.UTC(y,m,0)).getUTCDate();
+    start = instant(`${y}-${String(m).padStart(2,'0')}-${String(Math.min(p.day,last)).padStart(2,'0')}`, zone, p); end = now;
+  }
   if (plan.period === 'last_days') { start = new Date(+now - plan.days * DAY); end = now; }
   if (plan.period === 'all_time') { start = new Date('1970-01-01T00:00:00.000Z'); end = now; }
   if (plan.period === 'custom') { start = instant(plan.from, zone); end = instant(shiftDate(plan.to, 1), zone); }
   if (end > now) end = now;
   if (!Number.isFinite(+start) || !Number.isFinite(+end) || start >= end) throw error('The reporting range must include elapsed time, not only future dates');
-  if (plan.period !== 'all_time' && end - start > 181 * DAY) throw error('Choose a reporting period of at most 180 days');
+  if (plan.period !== 'all_time' && end - start > 366 * DAY) throw error('Choose a reporting period of at most 365 days');
   previousStart ||= new Date(+start - (end - start)); previousEnd ||= start;
   const notices = [];
   let devices = plan.devices === null ? (base.device ? [base.device] : []) : plan.devices;
@@ -52,7 +59,7 @@ function resolveScope(plan, base, zone, now = new Date()) {
   // An explicit device question takes precedence over an inherited platform.
   if (plan.devices !== null && plan.platform === null && ((platform === 'web' && devices.some(x => x !== 'Desktop')) || (platform === 'app' && devices.includes('Desktop')) || !devices.length)) { platform = 'combined'; notices.push('The question’s device selection overrides the inherited platform filter for this answer.'); }
   if ((platform === 'web' && devices.some(x => x !== 'Desktop')) || (platform === 'app' && devices.includes('Desktop'))) throw error('The requested platform and device conflict. Use combined platform to compare devices.');
-  if (Math.abs((end - start) - (previousEnd - previousStart)) > 60000) notices.push('Calendar/timezone boundaries give these periods different elapsed durations; compare rates with care.');
+  if (plan.compare !== 'none' && Math.abs((end - start) - (previousEnd - previousStart)) > 60000) notices.push('Calendar/timezone boundaries give these periods different elapsed durations; compare rates with care.');
   return { projectId: String(base.projectId), start, end, previousStart, previousEnd, timezone: zone, platform, devices, personas: plan.personas === null ? base.personas : plan.personas, comparisonLabel, notices };
 }
 module.exports = { timezone, parts, localDate, shiftDate, instant, resolveScope };

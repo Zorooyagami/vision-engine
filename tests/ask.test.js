@@ -32,8 +32,8 @@ test('ambiguous and untracked questions never execute arbitrary operations', asy
   assert.equal(answer.status, 'unsupported'); assert.equal(loaded, false);
 });
 test('planner schema rejects bad enums, ranges and fields never become DB commands', () => {
-  for (const p of [{ metrics: ['$where'] }, { days: 181 }, { limit: 9999 }, { devices: ['iPhone'] }, { period: 'custom', from: '2026-02-30', to: '2026-03-02' }]) assert.throws(() => validatePlan(p));
-  assert.equal(validatePlan({ ...BASE, projectId: 'other', query: { $where: 'bad' } }).projectId, undefined);
+  for (const p of [{ metrics: ['$where'] }, { days: 366 }, { limit: 9999 }, { devices: ['iPhone'] }, { period: 'custom', from: '2026-02-30', to: '2026-03-02' }]) assert.throws(() => validatePlan(p));
+  assert.throws(() => validatePlan({ ...BASE, projectId: 'other', query: { $where: 'bad' } }));
   assert.equal(validatePlan({ ...BASE, groupBy: 'page', metrics: ['revenue'] }).status, 'clarify');
   assert.throws(() => validateRequest({ question: 'hello', timezone: 'Not/AZone' }));
 });
@@ -132,7 +132,7 @@ test('data loader scopes every query, projects minimal fields and enforces its b
   const calls = []; let eventRows = [event('a', 'purchase')];
   const chain = { select(v) { calls.push(['select', v]); return this; }, sort(v) { calls.push(['sort', v]); return this; }, limit(v) { calls.push(['limit', v]); return this; }, maxTimeMS(v) { calls.push(['timeout', v]); return this; }, async lean() { return eventRows; } };
   const Event = { find(q) { calls.push(['find', q]); return chain; }, aggregate(q) { calls.push(['aggregate', q]); return { option: async () => [{ _id: 'loyal-user' }] }; } };
-  const module = { exports: {} }; vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../services/ask/data.js'), 'utf8'), { module, exports: module.exports, require: name => name.includes('models/Event') ? Event : require('../services/ask/catalog'), process, Date, Set });
+  const module = { exports: {} }; vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../services/ask/data.js'), 'utf8'), { module, exports: module.exports, require: name => name.includes('models/Event') ? Event : name.includes('aggregations') ? { getLoyalUserIds: async (projectId) => new Set((await Event.aggregate([{ $match: { projectId } }]).option()).map(row => row._id)) } : require('../services/ask/catalog'), process, Date, Set });
   const result = await module.exports.loadData(scope, true);
   assert.equal(calls.find(c => c[0] === 'find')[1].projectId, 'project-a'); assert.equal(calls.find(c => c[0] === 'find')[1].$or.length, 2);
   assert.equal(calls.find(c => c[0] === 'aggregate')[1][0].$match.projectId, 'project-a');

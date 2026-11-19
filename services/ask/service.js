@@ -10,16 +10,29 @@ function validateRequest(body) {
   if (body.context && JSON.stringify(body.context).length > 6000) throw error('Question context is too large');
   return { question: body.question.trim(), context: body.context ? validatePlan(body.context) : null, timezone: timezone(body.timezone || 'UTC') };
 }
-async function answerQuestion(body, base, { load, planner = planQuestion, now = new Date(), isCancelled = () => false } = {}) {
+async function answerQuestion(body, base, { load, planner = planQuestion, now = new Date(), isCancelled = () => false, signal = null, aggregate = null, listEvents = null } = {}) {
   const request = validateRequest(body);
-  const routing = await planner(request.question, request.context);
+  const knownEvents = await (listEvents || (planner === planQuestion ? require('./projectEvents').listProjectEvents : async () => []))(base.projectId);
+  const routing = await planner(request.question, request.context, undefined, knownEvents);
   if (isCancelled()) throw error('Request cancelled', 499);
   const plan = validatePlan(routing.plan);
   if (plan.status !== 'ready') return { version: 2, status: plan.status, headline: plan.status === 'clarify' ? 'Let’s narrow the question' : 'This question needs other data', observations: [plan.message || 'Try a question about revenue, sessions, checkout conversion or a tracked funnel.'], cards: [], blocks: [], warnings: [], notes: [], definitions: [], followUps: ['Why did checkout conversion change for mobile this week?', 'Show revenue by persona', 'Show daily sessions for the last 30 days'], context: request.context, mode: routing.mode, notice: routing.notice || null };
   const scope = resolveScope(plan, base, request.timezone, now);
   // Avoid an expensive lifetime purchase aggregation unless persona classification needs it.
   const includeLoyal = Array.isArray(scope.personas) && scope.personas.some(p => p !== 'guest');
-  const raw = await load(scope, plan.compare !== 'none', { includeLoyal });
+  const dbModes = {
+    top_spenders: { measure: 'sum_purchase_total', groupBy: 'user', eventName: 'purchase' },
+    product_cart_adds: { measure: 'count_events', groupBy: 'product', eventName: 'add_to_cart' },
+    product_cart_removals: { measure: 'count_events', groupBy: 'product', eventName: 'cart_removals' },
+  };
+  // Persona-scoped specialist reporting retains the old session classifier until
+  // equivalent user-level materializations are available.
+  if (!scope.personas.length && dbModes[plan.mode]) {
+    const compiledPlan = { ...plan, mode: 'aggregate_query', query: dbModes[plan.mode], compare: 'none' };
+    return (aggregate || require('./queryService').answerAggregateQuery)(compiledPlan, scope, routing, { signal, catalog: knownEvents });
+  }
+  if (plan.mode === 'aggregate_query') return (aggregate || require('./queryService').answerAggregateQuery)(plan, scope, routing, { signal, catalog: knownEvents });
+  const raw = await load(scope, plan.compare !== 'none', { includeLoyal, signal, ordered: plan.mode === 'funnel' });
   if (isCancelled()) throw error('Request cancelled', 499);
   if (['audience_city', 'audience_device', 'top_spenders', 'product_cart_adds', 'product_cart_removals'].includes(plan.mode)) return answerSpecialist(plan, scope, raw, routing);
   if (plan.mode === 'product_unpurchased') return answerUnpurchasedProducts(plan, scope, raw, routing);

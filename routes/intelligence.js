@@ -39,8 +39,14 @@ router.post('/ask', async (req, res) => {
   try {
     authorize(req);
     release = guard.enter(req.projectId);
-    const result = await answerQuestion(req.body, readFilters(req), { load: loadData, isCancelled: () => res.destroyed });
-    if (!res.destroyed) res.json(result);
+    const controller = new AbortController();
+    const cancelled = () => controller.signal.aborted || res.destroyed;
+    const onClose = () => { if (!res.writableEnded) controller.abort(); };
+    res.once('close', onClose);
+    try {
+      const result = await answerQuestion(req.body, readFilters(req), { load: loadData, signal: controller.signal, isCancelled: cancelled });
+      if (!cancelled()) res.json(result);
+    } finally { res.off('close', onClose); }
   } catch (error) { fail(res, error); }
   finally { release?.(); }
 });
