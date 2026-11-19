@@ -45,8 +45,10 @@ function answerSpecialist(plan, scope, raw, routing) {
     const spending = new Map(), currencies = new Set(); let invalid = 0, unknown = 0;
     for (const e of events) if (e.event === 'purchase') {
       if (!e.userId || String(e.userId).startsWith('guest_')) { unknown++; continue; }
-      const amount = num(e.properties?.total);
-      const currency = label(e.properties?.currency || process.env.DASHBOARD_CURRENCY).toUpperCase();
+      const p = e.properties || {};
+      const amount = num(p.total ?? p.totalAmount ?? p.orderTotal ?? p.revenue ?? p.value ?? e.amount);
+      // Do not guess monetary units from locale, IP address or product prices.
+      const currency = label(p.currency || p.currencyCode || e.currency || process.env.DASHBOARD_CURRENCY).toUpperCase();
       if (amount === null || !/^[A-Z]{3}$/.test(currency)) { invalid++; continue; }
       currencies.add(currency);
       const id = String(e.userId);
@@ -56,7 +58,7 @@ function answerSpecialist(plan, scope, raw, routing) {
     title = 'Highest recorded customer spend'; headers = ['User ID', 'Completed purchase events', 'Recorded spend', 'Currency'];
     if (currencies.size > 1) warnings.push('Multiple currencies were recorded. Amounts cannot be ranked together without exchange-rate conversion.');
     else rows = [...spending].map(([id,v]) => ({ cells: [id.slice(0,100), v.orders, Math.round(v.amount*100)/100, [...currencies][0] || ''], sort: v.amount })).sort((a,b) => b.sort-a.sort).slice(0,plan.limit);
-    if (invalid) warnings.push(`${invalid} purchase event(s) lack valid amount or currency and are excluded.`);
+    if (invalid) warnings.push(`${invalid} purchase event(s) lack valid amount or currency and are excluded. If all purchases use a single known currency, configure DASHBOARD_CURRENCY on the backend or track properties.currency in the SDK.`);
     if (unknown) warnings.push(`${unknown} guest/anonymous purchase event(s) cannot be attributed to a known customer.`);
     definitions = ['Sum of tracked purchase event totals per identified user, before any refunds or cancellations. Repeated or duplicated purchase events can inflate results.'];
     followUps = ['Show revenue by persona', 'Which products were viewed but never bought?'];
