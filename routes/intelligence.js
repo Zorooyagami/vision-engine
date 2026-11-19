@@ -19,6 +19,7 @@ function fail(res, error) {
     route: res.req?.originalUrl?.split('?')[0], status,
     name: error.name, code: error.code || 'internal', codeName: error.codeName,
     reason: timeout ? 'mongo_timeout' : memory ? 'mongo_memory' : connectivity ? 'mongo_unavailable' : 'query_failure',
+    mongoMessage: memory ? String(error.message || '').slice(0, 350) : undefined,
   });
   const message = error.status ? error.message
     : timeout ? 'Analytics query timed out. Check MongoDB indexes and query performance.'

@@ -1,45 +1,48 @@
 //vision-engine/services/aggregations.js
 const Event = require('../models/Event');
 
+// Read user IDs in index order instead of a MongoDB $group over all lifetime
+// purchases. Requires {projectId:1,event:1,userId:1} for a bounded-memory sort.
 async function getLoyalUserIds(projectId) {
-  const rows = await Event.aggregate([
-    { $match: { projectId, event: 'purchase', userId: { $ne: null } } },
-    { $group: { _id: '$userId', orderCount: { $sum: 1 } } },
-    // Existing product definition: 2+ purchases = loyal.
-    { $match: { orderCount: { $gte: 2 } } },
-  ]).option({ allowDiskUse: true, maxTimeMS: Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000)) });
-  return new Set(rows.map((row) => row._id));
+  const result = new Set();
+  const query = Event.find({ projectId, event: 'purchase', userId: { $nin: [null, ''] } })
+    .select('userId -_id')
+    .sort({ userId: 1 })
+    .lean()
+    .maxTimeMS(Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000)));
+  let last = null;
+  let count = 0;
+  for await (const event of query.cursor({ batchSize: 1000 })) {
+    const id = event.userId;
+    if (id === last) {
+      count += 1;
+      if (count === 2) result.add(id);
+    } else {
+      last = id;
+      count = 1;
+    }
+  }
+  return result;
+}
+
+async function getDistinctUserIds(match) {
+  const ids = new Set();
+  const query = Event.find(match).select('userId -_id').lean()
+    .maxTimeMS(Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000)));
+  for await (const event of query.cursor({ batchSize: 1000 })) {
+    if (event.userId) ids.add(event.userId);
+  }
+  return ids;
 }
 
 async function getFirstTimeUserIds(projectId, start, end) {
-  const rows = await Event.aggregate([
-    {
-      $match: {
-        projectId,
-        event: 'sign_up',
-        timestamp: { $gte: start, $lt: end },
-        userId: { $ne: null },
-      },
-    },
-    { $group: { _id: '$userId' } },
-  ]);
-  return new Set(rows.map((row) => row._id));
+  return getDistinctUserIds({ projectId, event: 'sign_up',
+    timestamp: { $gte: start, $lt: end }, userId: { $nin: [null, ''] } });
 }
 
 async function getActiveUserIds(projectId, start, end) {
-  const rows = await Event.aggregate([
-    {
-      // userId on any event means this was a known/logged-in user during the
-      // selected period. Higher-priority personas are excluded by the caller.
-      $match: {
-        projectId,
-        timestamp: { $gte: start, $lt: end },
-        userId: { $ne: null },
-      },
-    },
-    { $group: { _id: '$userId' } },
-  ]);
-  return new Set(rows.map((row) => row._id));
+  return getDistinctUserIds({ projectId,
+    timestamp: { $gte: start, $lt: end }, userId: { $nin: [null, ''] } });
 }
 
 async function classifyPersonas(projectId, start, end) {

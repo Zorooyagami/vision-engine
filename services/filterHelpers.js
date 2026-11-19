@@ -58,6 +58,17 @@ function applyPlatformDeviceFilter(match, platform, device) {
   return match;
 }
 
+// Stream user IDs instead of creating a large MongoDB $group in memory.
+async function uniqueUserIds(match) {
+  const ids = new Set();
+  const query = Event.find(match).select('userId -_id').lean()
+    .maxTimeMS(Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000)));
+  for await (const row of query.cursor({ batchSize: 1000 })) {
+    if (row.userId) ids.add(row.userId);
+  }
+  return ids;
+}
+
 async function getPersonaUserIds(projectId, personas, start, end, { loyalIds: precomputedLoyalIds } = {}) {
   if (!personas?.length) return null;
   if (!projectId) throw new Error('projectId is required for persona resolution');
@@ -72,37 +83,15 @@ async function getPersonaUserIds(projectId, personas, start, end, { loyalIds: pr
   const [loyalIds, firstTimeRows, activeRows] = await Promise.all([
     needLoyal ? (precomputedLoyalIds ? Promise.resolve(precomputedLoyalIds) : getLoyalUserIds(projectId)) : Promise.resolve(new Set()),
     needFirstTime
-      ? Event.aggregate([
-          {
-            $match: {
-              projectId,
-              event: 'sign_up',
-              timestamp: { $gte: start, $lt: end },
-              userId: { $ne: null },
-            },
-          },
-          { $group: { _id: '$userId' } },
-        ]).option({ allowDiskUse: true, maxTimeMS: Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000)) })
+      ? uniqueUserIds({ projectId, event: 'sign_up', timestamp: { $gte: start, $lt: end }, userId: { $nin: [null, ''] } })
       : Promise.resolve([]),
     needActive
-      ? Event.aggregate([
-          {
-            // A known user with any activity in the selected window is active.
-            // Loyal and first-time users are removed below so personas remain
-            // mutually exclusive: loyal > firsttime > active > guest.
-            $match: {
-              projectId,
-              timestamp: { $gte: start, $lt: end },
-              userId: { $ne: null },
-            },
-          },
-          { $group: { _id: '$userId' } },
-        ]).option({ allowDiskUse: true, maxTimeMS: Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000)) })
+      ? uniqueUserIds({ projectId, timestamp: { $gte: start, $lt: end }, userId: { $nin: [null, ''] } })
       : Promise.resolve([]),
   ]);
 
-  const firsttimeSet = new Set(firstTimeRows.map((row) => row._id));
-  const activeSet = new Set(activeRows.map((row) => row._id));
+  const firsttimeSet = firstTimeRows;
+  const activeSet = activeRows;
   const ids = new Set();
 
   if (personas.includes('loyal')) loyalIds.forEach((id) => ids.add(id));
