@@ -7,7 +7,7 @@ async function getLoyalUserIds(projectId) {
     { $group: { _id: '$userId', orderCount: { $sum: 1 } } },
     // Existing product definition: 2+ purchases = loyal.
     { $match: { orderCount: { $gte: 2 } } },
-  ]);
+  ]).option({ allowDiskUse: true, maxTimeMS: Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000)) });
   return new Set(rows.map((row) => row._id));
 }
 

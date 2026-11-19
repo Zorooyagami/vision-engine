@@ -35,6 +35,8 @@ const eventSchema = new mongoose.Schema(
 // into collection scans.
 eventSchema.index({ projectId: 1, timestamp: -1 });
 eventSchema.index({ projectId: 1, event: 1, timestamp: -1 });
+// Lifetime loyalty aggregation groups purchases by user; avoid a collection scan.
+eventSchema.index({ projectId: 1, event: 1, userId: 1 });
 eventSchema.index({ projectId: 1, userId: 1, timestamp: -1 });
 eventSchema.index({ projectId: 1, sessionId: 1, timestamp: 1 });
 eventSchema.index({ projectId: 1, path: 1, event: 1, timestamp: -1 });

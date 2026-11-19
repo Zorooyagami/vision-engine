@@ -1,6 +1,6 @@
 const Event = require('../../models/Event');
 const { error } = require('./catalog');
-const QUERY_TIMEOUT = 15000;
+const QUERY_TIMEOUT = Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000));
 async function loadData(scope, comparison = true, { includeLoyal = true } = {}) {
   const cap = Math.floor(Math.min(100000, Math.max(1000, Number(process.env.ASK_MAX_EVENTS) || 30000)));
   const windows = [{ start: scope.start, end: scope.end }];
@@ -14,7 +14,7 @@ async function loadData(scope, comparison = true, { includeLoyal = true } = {}) 
     { $match: { projectId, event: 'purchase', userId: { $nin: [null, ''] } } },
     { $group: { _id: '$userId', count: { $sum: 1 } } },
     { $match: { count: { $gte: 2 } } }, { $project: { count: 0 } }, { $limit: cap + 1 },
-  ]).option({ maxTimeMS: QUERY_TIMEOUT }) : Promise.resolve([]);
+   ]).option({ allowDiskUse: true, maxTimeMS: QUERY_TIMEOUT }) : Promise.resolve([]);
   const [events, loyalRows] = await Promise.all([eventPromise, loyalPromise]);
   if (events.length > cap || loyalRows.length > cap) throw error(`This question exceeds the ${cap.toLocaleString('en-GB')} record analysis limit. Narrow the dates and retry.`, 413);
   const within = (e, w) => +new Date(e.timestamp) >= +w.start && +new Date(e.timestamp) < +w.end;

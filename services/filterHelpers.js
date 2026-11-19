@@ -58,7 +58,7 @@ function applyPlatformDeviceFilter(match, platform, device) {
   return match;
 }
 
-async function getPersonaUserIds(projectId, personas, start, end) {
+async function getPersonaUserIds(projectId, personas, start, end, { loyalIds: precomputedLoyalIds } = {}) {
   if (!personas?.length) return null;
   if (!projectId) throw new Error('projectId is required for persona resolution');
 
@@ -70,7 +70,7 @@ async function getPersonaUserIds(projectId, personas, start, end) {
   const needActive = personas.includes('active');
 
   const [loyalIds, firstTimeRows, activeRows] = await Promise.all([
-    needLoyal ? getLoyalUserIds(projectId) : Promise.resolve(new Set()),
+    needLoyal ? (precomputedLoyalIds ? Promise.resolve(precomputedLoyalIds) : getLoyalUserIds(projectId)) : Promise.resolve(new Set()),
     needFirstTime
       ? Event.aggregate([
           {
@@ -82,7 +82,7 @@ async function getPersonaUserIds(projectId, personas, start, end) {
             },
           },
           { $group: { _id: '$userId' } },
-        ])
+        ]).option({ allowDiskUse: true, maxTimeMS: Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000)) })
       : Promise.resolve([]),
     needActive
       ? Event.aggregate([
@@ -97,7 +97,7 @@ async function getPersonaUserIds(projectId, personas, start, end) {
             },
           },
           { $group: { _id: '$userId' } },
-        ])
+        ]).option({ allowDiskUse: true, maxTimeMS: Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000)) })
       : Promise.resolve([]),
   ]);
 
