@@ -13,7 +13,7 @@ function fail(res, error) {
   const status = error.status || 500;
   if (status === 429) res.set('Retry-After', '60');
   // No question text, model output or event payloads are logged.
-  if (status >= 500) console.error('[intelligence] request failed', { status, name: error.name, code: error.code || 'internal', codeName: error.codeName, reason: error.code === 50 || error.codeName === 'MaxTimeMSExpired' ? 'mongo_timeout' : error.name === 'MongoServerSelectionError' ? 'mongo_unreachable' : error.name === 'MongoNetworkError' ? 'mongo_network' : 'query_failure' });
+  if (status >= 500) console.error('[intelligence] request failed', { status, code: error.code || 'internal' });
   res.status(status).json({ error: error.status ? error.message : (error.code === 50 || error.codeName === 'MaxTimeMSExpired' ? 'The analytics query timed out. Try a shorter range or check MongoDB indexes.' : 'Analytics service could not load this period. Check the backend logs and MongoDB connection.') });
 }
 router.get('/home-summary', async (req, res) => {
