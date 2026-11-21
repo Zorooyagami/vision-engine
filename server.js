@@ -3,6 +3,7 @@ require('dotenv').config()
 
 const express = require('express')
 const cors = require('cors')
+const compression = require('compression')
 const { connectMongo } = require('./config/mongo')
 
 const requireProject = require('./middleware/requireProject').requireProject
@@ -24,6 +25,12 @@ const corsOptions = {
 
 // Must be registered before all routes
 app.use(cors(corsOptions))
+// gzip JSON responses (heatmaps/analytics payloads shrink ~5-10x). Skip the
+// live SSE stream, which must not be buffered.
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => (String(res.getHeader('Content-Type') || '').includes('text/event-stream') ? false : compression.filter(req, res)),
+}))
 // app.options('*', cors(corsOptions))
 // Session-replay ingest sends a binary (zlib) body and parses it with
 // express.raw() inside the router, so it must be mounted BEFORE express.json().
