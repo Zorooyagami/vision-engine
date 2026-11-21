@@ -23,4 +23,9 @@ router.get('/recent', requireProject, getRecentEvents);
 router.get('/summary', requireProject, getEventSummary);
 router.get('/heatmaps/:pageId', requireProject, getPageHeatmaps);
 
+const snapshots = require('../controllers/heatmapSnapshots');
+router.post('/heatmap-snapshots', requireProject, checkOrigin, snapshots.upload);
+router.get('/heatmap-snapshots', requireProject, snapshots.list);
+router.get('/heatmap-snapshots/:key', requireProject, snapshots.image);
+
 module.exports = router;
