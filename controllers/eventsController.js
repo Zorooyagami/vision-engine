@@ -167,21 +167,76 @@ async function getPageHeatmaps(req, res) {
     const personaFilter = await getPersonaUserIds(req.projectId, personaList, start, end);
     applyPersonaFilter(match, personaFilter);
 
-    const events = await Event.find(match)
-      .select({
-        _id: 1,
-        sessionId: 1,
-        userId: 1,
-        event: 1,
-        timestamp: 1,
-        path: 1,
-        properties: 1,
-        deviceInfo: 1,
-      })
-      .sort({ timestamp: 1 })
-      .lean();
+    // Clicks and moves get separate caps so a flood of pointer-move samples can
+    // never crowd the (much rarer, much more valuable) clicks out of the result.
+    const CAPS = { heatmap_click: 50000, heatmap_move: 40000 };
+    const requestedCap = parseInt(req.query.limit, 10);
+    const capFor = (type) =>
+      Number.isFinite(requestedCap) && requestedCap > 0 ? Math.min(requestedCap, 100000) : CAPS[type];
 
-    res.json({ page, events });
+    // Only the fields the heatmap actually draws and filters with.
+    const projection = {
+      _id: 0,
+      sessionId: 1,
+      userId: 1,
+      event: 1,
+      timestamp: 1,
+      path: 1,
+      'deviceInfo.deviceType': 1,
+      'properties.coordinateSpace': 1,
+      'properties.x': 1,
+      'properties.y': 1,
+      'properties.xPx': 1,
+      'properties.yPx': 1,
+      'properties.documentWidth': 1,
+      'properties.documentHeight': 1,
+      'properties.viewportWidth': 1,
+      'properties.viewportHeight': 1,
+      'properties.scrollX': 1,
+      'properties.scrollY': 1,
+      'properties.target': 1,
+    };
+
+    const fetchType = async (type) => {
+      const cap = capFor(type);
+      // Newest first, so a truncated result is the most recent activity.
+      const rows = await Event.find({ ...match, event: type })
+        .select(projection)
+        .sort({ timestamp: -1 })
+        .limit(cap + 1)
+        .maxTimeMS(30000)
+        .lean();
+      const truncated = rows.length > cap;
+      return { rows: truncated ? rows.slice(0, cap) : rows, truncated };
+    };
+
+    const [clicks, moves] = await Promise.all([fetchType('heatmap_click'), fetchType('heatmap_move')]);
+    const events = clicks.rows.concat(moves.rows);
+
+    // Most-visited concrete paths (e.g. which product page people actually
+    // looked at) so the dashboard can show the real page behind the heat.
+    const pathCounts = new Map();
+    for (const row of clicks.rows) {
+      if (row.path) pathCounts.set(row.path, (pathCounts.get(row.path) || 0) + 1);
+    }
+    if (!pathCounts.size) {
+      for (const row of moves.rows) {
+        if (row.path) pathCounts.set(row.path, (pathCounts.get(row.path) || 0) + 1);
+      }
+    }
+    const topPaths = Array.from(pathCounts, ([path, count]) => ({ path, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    res.json({
+      page,
+      events,
+      meta: {
+        counts: { click: clicks.rows.length, move: moves.rows.length },
+        truncated: { click: clicks.truncated, move: moves.truncated },
+        topPaths,
+      },
+    });
   } catch (err) {
     console.error('[events] heatmap error:', err);
     res.status(500).json({ error: 'failed to fetch heatmap data' });
