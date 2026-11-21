@@ -3,6 +3,7 @@ const {
   resolveDateRange,
   applyPlatformDeviceFilter,
   getPersonaUserIds,
+  GUEST_USER_MATCH,
 } = require('./filterHelpers');
 
 const PERSONA_KEYS = ['loyal', 'firsttime', 'active', 'guest'];
@@ -26,7 +27,7 @@ async function getRevenueByPersona({
     PERSONA_KEYS.map(async (key) => {
       const match = { ...baseMatch };
       if (key === 'guest') {
-        match.userId = null;
+        Object.assign(match, GUEST_USER_MATCH);
       } else {
         const filter = await getPersonaUserIds(projectId, [key], start, end);
         const ids = filter ? [...filter.ids] : [];
@@ -94,7 +95,7 @@ async function getStackedRevenueByPersona({
   for (const purchase of purchases) {
     const month = new Date(purchase.timestamp).toLocaleString('en-US', { month: 'short' });
     let persona = 'guest';
-    if (purchase.userId) {
+    if (purchase.userId && !String(purchase.userId).startsWith('guest_')) {
       if (loyalIds.has(purchase.userId)) persona = 'loyal';
       else if (firsttimeIds.has(purchase.userId)) persona = 'firsttime';
       else if (activeIds.has(purchase.userId)) persona = 'active';
@@ -108,7 +109,7 @@ async function getStackedRevenueByPersona({
 
   Object.keys(monthly).forEach((month) => {
     PERSONA_KEYS.forEach((key) => {
-      monthly[month][key] = Math.round(monthly[month][key] || 0);
+      monthly[month][key] = Number((monthly[month][key] || 0).toFixed(3));
     });
   });
 

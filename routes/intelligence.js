@@ -5,6 +5,7 @@ const { answerQuestion } = require('../services/ask/service');
 const { loadData } = require('../services/ask/data');
 const { createGuard, authorize } = require('../services/ask/guard');
 const guard = createGuard();
+const { cachedAnalytics } = require('../services/intelligence/requestCache');
 const { getHomeSummary } = require('../services/intelligence/homeSummary');
 router.use(requireProject);
 router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -29,10 +30,10 @@ function fail(res, error) {
   res.status(status).json({ error: message });
 }
 router.get('/home-summary', async (req, res) => {
-  try { res.json(await getHomeSummary(req)); } catch (error) { fail(res, error); }
+  try { res.json(await cachedAnalytics('home-summary', req, () => getHomeSummary(req), 30000)); } catch (error) { fail(res, error); }
 });
 router.get('/snapshot', async (req, res) => {
-  try { res.json(await getSnapshot(req)); } catch (error) { fail(res, error); }
+  try { res.json(await cachedAnalytics('snapshot', req, () => getSnapshot(req), 30000)); } catch (error) { fail(res, error); }
 });
 router.post('/ask', async (req, res) => {
   let release;

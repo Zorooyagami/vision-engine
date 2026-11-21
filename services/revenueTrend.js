@@ -51,7 +51,7 @@ async function getRevenueTrend({
   ]);
 
   // Frontend chart currently expects value in thousands.
-  return rows.map((row) => ({ label: row._id, value: Math.round(row.revenue / 1000) }));
+  return rows.map((row) => ({ label: row._id, value: Number((row.revenue / 1000).toFixed(3)) }));
 }
 
 module.exports = { getRevenueTrend, resolveBucketing };

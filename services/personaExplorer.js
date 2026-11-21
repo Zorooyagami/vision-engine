@@ -76,7 +76,7 @@ async function resolvePersonaSets(projectId, start, end, loyalIds) {
       $match: {
         projectId,
         timestamp: { $gte: start, $lt: end },
-        userId: { $ne: null },
+        userId: { $nin: [null, ''], $not: /^guest_/ },
       },
     },
     {
@@ -118,7 +118,7 @@ function personaSwitch(sets) {
     $switch: {
       branches: [
         {
-          case: { $eq: ['$userId', null] },
+          case: { $or: [{ $eq: ['$userId', null] }, { $eq: ['$userId', ''] }, { $regexMatch: { input: { $toString: { $ifNull: ['$userId', ''] } }, regex: '^guest_' } }] },
           then: 'guest',
         },
         {
@@ -261,7 +261,7 @@ async function getWindowMetrics({
         ],
 
         repeatKnownUsers: [
-          { $match: { userId: { $ne: null } } },
+          { $match: { userId: { $nin: [null, ''], $not: /^guest_/ } } },
           {
             $group: {
               _id: {

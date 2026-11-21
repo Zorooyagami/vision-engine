@@ -3,6 +3,8 @@ const Event = require('../models/Event');
 const { getLoyalUserIds } = require('./aggregations');
 
 const PERIOD_DAYS = { '1d': 1, '7d': 7, '30d': 30, '90d': 90, '180d': 180 };
+const GUEST_USER_MATCH = { $or: [{ userId: null }, { userId: '' }, { userId: /^guest_/ }] };
+const KNOWN_USER_MATCH = { userId: { $nin: [null, ''], $not: /^guest_/ } };
 const PLATFORM_DEVICE_MAP = {
   web: ['Desktop'],
   app: ['Mobile', 'Tablet'],
@@ -64,7 +66,7 @@ async function uniqueUserIds(match) {
   const query = Event.find(match).select('userId -_id').lean()
     .maxTimeMS(Math.min(120000, Math.max(15000, Number(process.env.INTELLIGENCE_QUERY_TIMEOUT_MS) || 45000)));
   for await (const row of query.cursor({ batchSize: 1000 })) {
-    if (row.userId) ids.add(row.userId);
+    if (row.userId && !String(row.userId).startsWith('guest_')) ids.add(row.userId);
   }
   return ids;
 }
@@ -83,10 +85,10 @@ async function getPersonaUserIds(projectId, personas, start, end, { loyalIds: pr
   const [loyalIds, firstTimeRows, activeRows] = await Promise.all([
     needLoyal ? (precomputedLoyalIds ? Promise.resolve(precomputedLoyalIds) : getLoyalUserIds(projectId)) : Promise.resolve(new Set()),
     needFirstTime
-      ? uniqueUserIds({ projectId, event: 'sign_up', timestamp: { $gte: start, $lt: end }, userId: { $nin: [null, ''] } })
+      ? uniqueUserIds({ projectId, event: 'sign_up', timestamp: { $gte: start, $lt: end }, ...KNOWN_USER_MATCH })
       : Promise.resolve([]),
     needActive
-      ? uniqueUserIds({ projectId, timestamp: { $gte: start, $lt: end }, userId: { $nin: [null, ''] } })
+      ? uniqueUserIds({ projectId, timestamp: { $gte: start, $lt: end }, ...KNOWN_USER_MATCH })
       : Promise.resolve([]),
   ]);
 
@@ -117,7 +119,7 @@ function applyPersonaFilter(match, personaFilter) {
     orConditions.push({ userId: { $in: [...personaFilter.ids] } });
   }
   if(personaFilter.sessions?.size) orConditions.push({sessionId:{$in:[...personaFilter.sessions]}});
-  if (personaFilter.includeGuest) orConditions.push({ userId: null });
+  if (personaFilter.includeGuest) orConditions.push(GUEST_USER_MATCH);
 
   const condition = { $or: orConditions.length ? orConditions : [{ userId: { $in: [] } }] };
   if(match.$or) { match.$and=[...(match.$and||[]),condition]; } else { Object.assign(match,condition); }
@@ -131,4 +133,6 @@ module.exports = {
   getPersonaUserIds,
   applyPersonaFilter,
   PLATFORM_DEVICE_MAP,
+  GUEST_USER_MATCH,
+  KNOWN_USER_MATCH,
 };

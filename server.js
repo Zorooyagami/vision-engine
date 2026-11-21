@@ -38,6 +38,7 @@ app.use('/api/behavior', require('./routes/behavior'))
 app.use('/api/events', require('./routes/events'))
 app.use('/api/analytics', require('./routes/analytics'))
 app.use('/api/opportunities', require('./routes/opportunities'))
+app.use('/api/decision-intelligence', require('./routes/decisionIntelligence'))
 app.use('/api/stats', require('./routes/stats'))
 app.use('/api/admin', require('./routes/admin'))
 

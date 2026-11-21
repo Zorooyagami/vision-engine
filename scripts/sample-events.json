@@ -1,0 +1,317 @@
+[
+  {
+    "event": "add_to_cart",
+    "properties": {
+      "productId": 4,
+      "price": 821.13,
+      "source": "product_page",
+      "category": "Electronics",
+      "subCategory": "Audio",
+      "name": "Sennheiser Audio Series-325 (Forest Green)"
+    }
+  },
+  {
+    "event": "checkout_start",
+    "properties": {
+      "title": "ShopEasy - Ecommerce",
+      "screenWidth": 1432,
+      "screenHeight": 813,
+      "products": [
+        {
+          "id": 4,
+          "name": "Sennheiser Audio Series-325 (Forest Green)",
+          "brand": "Sennheiser",
+          "category": "Electronics",
+          "subCategory": "Audio",
+          "price": 821.13,
+          "originalPrice": 966.04,
+          "discount": 15,
+          "condition": "Like New",
+          "color": "Forest Green",
+          "rating": 4.7,
+          "stock": 48,
+          "image": "https://m.media-amazon.com/images/I/61CESMmWoIL._SL1500_.jpg",
+          "description": "Premium Sennheiser audio device delivering exceptional sound quality and craftsmanship for the discerning audiophile.",
+          "tags": [
+            "audio",
+            "headphones",
+            "sennheiser",
+            "premium",
+            "like-new",
+            "audiophile"
+          ],
+          "quantity": 1
+        },
+        {
+          "id": 100,
+          "name": "Apple MacBook Pro 16-inch M3 (Phantom Black, 32GB RAM / 1TB SSD)",
+          "brand": "Apple",
+          "category": "Electronics",
+          "subCategory": "Laptops",
+          "price": 926.1,
+          "originalPrice": 1089.53,
+          "discount": 15,
+          "condition": "Like New",
+          "color": "Phantom Black",
+          "rating": 4.9,
+          "stock": 50,
+          "image": "https://m.media-amazon.com/images/I/71YVZ4Nwk6L._AC_SX679_.jpg",
+          "description": "Top-of-the-line Apple MacBook Pro 16-inch M3 with professional-grade performance and stunning display.",
+          "tags": [
+            "laptop",
+            "apple",
+            "macbook-pro",
+            "m3",
+            "like-new",
+            "premium",
+            "flagship"
+          ],
+          "quantity": 1
+        },
+        {
+          "id": 55,
+          "name": "Apple iPhone 13 Pro Max (Midnight, 16GB RAM / 512GB SSD)",
+          "brand": "Apple",
+          "category": "Electronics",
+          "subCategory": "Smartphones",
+          "price": 1105.3,
+          "originalPrice": 1473.73,
+          "discount": 25,
+          "condition": "Good",
+          "color": "Midnight",
+          "rating": 4.8,
+          "stock": 47,
+          "image": "https://m.media-amazon.com/images/I/71fMdu8YmgL._AC_SX679_.jpg",
+          "description": "Powerful iPhone 13 Pro Max with 6.7-inch display, exceptional camera system, and long battery life.",
+          "tags": [
+            "smartphone",
+            "apple",
+            "iphone-13-pro-max",
+            "flagship",
+            "good-condition"
+          ],
+          "quantity": 1
+        },
+        {
+          "id": 77,
+          "name": "Apple MacBook Air M1 (Starlight, 512GB)",
+          "brand": "Apple",
+          "category": "Electronics",
+          "subCategory": "Laptops",
+          "price": 845.45,
+          "originalPrice": 994.65,
+          "discount": 15,
+          "condition": "Like New",
+          "color": "Starlight",
+          "rating": 4.8,
+          "stock": 29,
+          "image": "https://m.media-amazon.com/images/I/71YVZ4Nwk6L._AC_SX679_.jpg",
+          "description": "Apple MacBook Air M1 with powerful performance, long battery life, and fanless design.",
+          "tags": [
+            "laptop",
+            "apple",
+            "macbook-air",
+            "m1",
+            "like-new",
+            "premium"
+          ],
+          "quantity": 1
+        },
+        {
+          "id": 14,
+          "name": "Canon EOS R6 (Navy Blue)",
+          "brand": "Canon",
+          "category": "Electronics",
+          "subCategory": "Cameras",
+          "price": 411.04,
+          "originalPrice": 548.05,
+          "discount": 25,
+          "condition": "Good",
+          "color": "Navy Blue",
+          "rating": 4.7,
+          "stock": 36,
+          "image": "https://m.media-amazon.com/images/I/61d9GjVgIpL._SL1443_.jpg",
+          "description": "Professional-grade Canon EOS R6 mirrorless camera with outstanding low-light performance and versatile features.",
+          "tags": [
+            "camera",
+            "canon",
+            "eos-r6",
+            "mirrorless",
+            "professional",
+            "good-condition",
+            "popular"
+          ],
+          "quantity": 1
+        },
+        {
+          "id": 10,
+          "name": "Lenovo Smart Tab M10 (Midnight, 256GB)",
+          "brand": "Lenovo",
+          "category": "Electronics",
+          "subCategory": "Tablets",
+          "price": 231.64,
+          "originalPrice": 661.84,
+          "discount": 65,
+          "condition": "Poor",
+          "color": "Midnight",
+          "rating": 3.6,
+          "stock": 17,
+          "image": "https://m.media-amazon.com/images/I/71qxj-OeOWL._SL1500_.jpg",
+          "description": "Versatile Lenovo tablet with smart dock functionality. Great for media consumption and home automation at an incredible price.",
+          "tags": [
+            "tablet",
+            "lenovo",
+            "smart-tab-m10",
+            "android",
+            "heavy-discount",
+            "popular"
+          ],
+          "quantity": 1
+        },
+        {
+          "id": 11,
+          "name": "Nintendo Switch Standard Edition (Silver)",
+          "brand": "Nintendo",
+          "category": "Electronics",
+          "subCategory": "Gaming Consoles",
+          "price": 743.89,
+          "originalPrice": 991.86,
+          "discount": 25,
+          "condition": "Good",
+          "color": "Silver",
+          "rating": 4.6,
+          "stock": 34,
+          "image": "https://m.media-amazon.com/images/I/51JQftW1L-L._AC_SX679_.jpg",
+          "description": "Versatile Nintendo Switch console that transforms from home console to portable gaming device. Perfect for family gaming.",
+          "tags": [
+            "gaming",
+            "console",
+            "nintendo",
+            "switch",
+            "portable",
+            "family",
+            "good-condition",
+            "popular"
+          ],
+          "quantity": 1
+        },
+        {
+          "id": 12,
+          "name": "Sony PlayStation 5 Disc Edition (Forest Green)",
+          "brand": "Sony",
+          "category": "Electronics",
+          "subCategory": "Gaming Consoles",
+          "price": 242.65,
+          "originalPrice": 693.28,
+          "discount": 65,
+          "condition": "Poor",
+          "color": "Forest Green",
+          "rating": 4.2,
+          "stock": 44,
+          "image": "https://m.media-amazon.com/images/I/613LzNDcKxL._SL1000_.jpg",
+          "description": "Next-gen PlayStation 5 at an incredible price. Despite condition issues, it offers access to the best PS5 gaming library.",
+          "tags": [
+            "gaming",
+            "console",
+            "playstation",
+            "sony",
+            "ps5",
+            "disc-version",
+            "heavy-discount",
+            "poor-condition"
+          ],
+          "quantity": 1
+        }
+      ],
+      "totalPrice": 5327.2,
+      "totalItems": 8
+    }
+  },
+  {
+    "event": "purchase",
+    "properties": {
+      "title": "ShopEasy - Ecommerce",
+      "screenWidth": 1432,
+      "screenHeight": 813,
+      "orderId": "ORD-4deb0456-b637-488d-98bc-f442fe5f87bb",
+      "total": "5327.20",
+      "paymentMethod": "paypal",
+      "products": [
+        {
+          "productId": 4,
+          "productName": "Sennheiser Audio Series-325 (Forest Green)",
+          "productPrice": 821.13,
+          "productQuantity": 1
+        },
+        {
+          "productId": 100,
+          "productName": "Apple MacBook Pro 16-inch M3 (Phantom Black, 32GB RAM / 1TB SSD)",
+          "productPrice": 926.1,
+          "productQuantity": 1
+        },
+        {
+          "productId": 55,
+          "productName": "Apple iPhone 13 Pro Max (Midnight, 16GB RAM / 512GB SSD)",
+          "productPrice": 1105.3,
+          "productQuantity": 1
+        },
+        {
+          "productId": 77,
+          "productName": "Apple MacBook Air M1 (Starlight, 512GB)",
+          "productPrice": 845.45,
+          "productQuantity": 1
+        },
+        {
+          "productId": 14,
+          "productName": "Canon EOS R6 (Navy Blue)",
+          "productPrice": 411.04,
+          "productQuantity": 1
+        },
+        {
+          "productId": 10,
+          "productName": "Lenovo Smart Tab M10 (Midnight, 256GB)",
+          "productPrice": 231.64,
+          "productQuantity": 1
+        },
+        {
+          "productId": 11,
+          "productName": "Nintendo Switch Standard Edition (Silver)",
+          "productPrice": 743.89,
+          "productQuantity": 1
+        },
+        {
+          "productId": 12,
+          "productName": "Sony PlayStation 5 Disc Edition (Forest Green)",
+          "productPrice": 242.65,
+          "productQuantity": 1
+        }
+      ]
+    }
+  },
+  {
+    "event": "select_item",
+    "properties": {
+      "title": "ShopEasy - Ecommerce",
+      "screenWidth": 384,
+      "screenHeight": 692,
+      "productId": 4,
+      "position": 4,
+      "name": "Sennheiser Audio Series-325 (Forest Green)",
+      "category": "Sennheiser Audio Series-325 (Forest Green)",
+      "subCategory": "Sennheiser Audio Series-325 (Forest Green)",
+      "brand": "Sennheiser",
+      "color": "Forest Green",
+      "condition": "Like New",
+      "rating": 4.7,
+      "tags": [
+        "audio",
+        "headphones",
+        "sennheiser",
+        "premium",
+        "like-new",
+        "audiophile"
+      ],
+      "price": 821.13
+    }
+  }
+]

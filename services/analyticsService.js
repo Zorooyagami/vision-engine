@@ -1,7 +1,7 @@
 const Event = require('../models/Event');
 const { normalizeDevice } = require('./filterHelpers');
 
-async function coreMetrics(match, deviceType = 'all') {
+async function coreMetrics(match, deviceType = 'all', { includeGuest = false } = {}) {
   const normalizedDevice = deviceType && String(deviceType).toLowerCase() !== 'all'
     ? normalizeDevice(deviceType)
     : null;
@@ -32,8 +32,14 @@ async function coreMetrics(match, deviceType = 'all') {
           { $count: 'count' },
         ],
         users: [
-          { $match: { userId: { $ne: null } } },
+          { $match: { userId: { $nin: [null, ''], $not: /^guest_/ } } },
           { $group: { _id: '$userId' } },
+          { $count: 'count' },
+        ],
+        guestSessions: [
+          { $match: { $or: [{ userId: null }, { userId: '' }, { userId: /^guest_/ }] } },
+          { $match: { sessionId: { $nin: [null, ''] } } },
+          { $group: { _id: '$sessionId' } },
           { $count: 'count' },
         ],
       },
@@ -43,7 +49,7 @@ async function coreMetrics(match, deviceType = 'all') {
   const revenue = result?.purchases?.[0]?.revenue || 0;
   const purchaseCount = result?.purchases?.[0]?.purchaseCount || 0;
   const sessionCount = result?.sessions?.[0]?.count || 0;
-  const activeUsers = result?.users?.[0]?.count || 0;
+  const activeUsers = (result?.users?.[0]?.count || 0) + (includeGuest ? (result?.guestSessions?.[0]?.count || 0) : 0);
 
   return {
     revenue: Number(revenue.toFixed(2)),
@@ -66,9 +72,10 @@ async function getKPIs(req, res) {
   try {
     const { period, persona, range, baseMatch, prevMatch } = req.analytics;
     const deviceType = req.query.deviceType || 'all';
+    const includeGuest = String(persona).split(',').includes('guest');
     const [current, previous] = await Promise.all([
-      coreMetrics(baseMatch, deviceType),
-      prevMatch ? coreMetrics(prevMatch, deviceType) : Promise.resolve(null),
+      coreMetrics(baseMatch, deviceType, { includeGuest }),
+      prevMatch ? coreMetrics(prevMatch, deviceType, { includeGuest }) : Promise.resolve(null),
     ]);
 
     res.json({

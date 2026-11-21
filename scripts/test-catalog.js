@@ -1,0 +1,18 @@
+'use strict';
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const {loadCatalogFile,compareCatalogs,parseArgs}=require('./seed-vision');
+const got=loadCatalogFile(path.join(__dirname,'products.js'));
+assert.equal(got.catalog.length,100);
+assert.equal(got.placeholder,false);
+assert.equal(got.catalog[0].id,1);
+assert.equal(got.catalog[0].name,'Sony PlayStation 5 Disc Edition (Phantom Black)');
+assert.equal(got.catalog[0].price,388.76);
+assert.equal(got.catalog[3].name,'Sennheiser Audio Series-325 (Forest Green)');
+assert.equal(got.catalog[3].price,821.13);
+assert.equal(got.catalog[99].id,100);
+assert.equal(compareCatalogs(got.catalog,[{id:4,name:'Sennheiser Audio Series-325 (Forest Green)',price:821.13}]).length,0);
+const args=parseArgs(['--catalog','scripts/products.js','--currency','USD']);
+assert.equal(args.catalog,'scripts/products.js');
+assert.equal(args.currency,'USD');
+console.log('PASS: 100 actual catalog products loaded; known event ID and price matched; export const syntax supported.');

@@ -57,7 +57,7 @@ async function getEventCatalog({
   const personaFilter = await getPersonaUserIds(projectId, personas, start, end);
   applyPersonaFilter(windowMatch, personaFilter);
 
-  const definitions = await EventDefinition.find({ projectId }).sort({ name: 1 }).lean();
+  const definitions = await EventDefinition.find({ projectId, deletedAt: null }).sort({ name: 1 }).lean();
 
   // One aggregation replaces 2 queries per event definition.
   const metricsRows = await Event.aggregate([
@@ -189,11 +189,27 @@ async function updateEventDefinition(projectId, name, patch = {}) {
   return def;
 }
 
+// Soft-delete only dashboard-tagged event definitions. Historical events remain
+// unchanged; a tombstone prevents ensureCatalogSeeded from recreating the entry.
+async function deleteTaggedEventDefinition(projectId, name) {
+  const def = await EventDefinition.findOne({ projectId, name, deletedAt: null });
+  if (!def) throw httpError(404, 'Tagged event not found');
+  if (def.source !== 'dashboard' || !def.trigger?.selector) {
+    throw httpError(403, 'Only dashboard-tagged events can be deleted');
+  }
+  def.status = 'Inactive';
+  def.deletedAt = new Date();
+  def.trigger = undefined;
+  await def.save();
+  return { name, deleted: true };
+}
+
 // What the public SDK needs: only active, element-tagged events, nothing else.
 async function getSdkConfig(projectId) {
   const defs = await EventDefinition.find({
     projectId,
     status: 'Active',
+    deletedAt: null,
     'trigger.selector': { $exists: true },
   })
     .sort({ name: 1 })
@@ -221,6 +237,7 @@ module.exports = {
   toggleEventStatus,
   addEventDefinition,
   updateEventDefinition,
+  deleteTaggedEventDefinition,
   getSdkConfig,
   ensureCatalogSeeded,
 };

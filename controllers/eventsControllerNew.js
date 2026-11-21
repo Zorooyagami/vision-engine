@@ -3,6 +3,7 @@ const {
   toggleEventStatus,
   addEventDefinition,
   updateEventDefinition,
+  deleteTaggedEventDefinition,
 } = require('../services/eventCatalog');
 const { getEventDetail } = require('../services/eventDetail');
 
@@ -73,4 +74,13 @@ async function patchEvent(req, res) {
   }
 }
 
-module.exports = { getEvents, patchEventStatus, postEvent, patchEvent, getEventDetailHandler };
+async function deleteTaggedEvent(req, res) {
+  try {
+    const result = await deleteTaggedEventDefinition(req.projectId, req.params.name);
+    res.json(result);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Delete failed' });
+  }
+}
+
+module.exports = { getEvents, patchEventStatus, postEvent, patchEvent, getEventDetailHandler, deleteTaggedEvent };

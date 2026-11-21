@@ -11,7 +11,6 @@ const { getPersonaUserIds } = require('./filterHelpers');
 async function resolvePersonaMatch(projectId, persona, range) {
   if (!projectId) throw new Error('projectId is required');
   if (!persona || persona === 'all') return {};
-  if (persona === 'guest') return { userId: null };
 
   const names=String(persona).split(',').map(p=>p==='firstTime'?'firsttime':p).filter(Boolean);
   const filter=await getPersonaUserIds(projectId,names,range?.from||new Date(0),range?.to||new Date());

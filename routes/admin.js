@@ -6,7 +6,7 @@ const { getTrend } = require('../controllers/revenueTrendController');
 const { getFunnelData } = require('../controllers/funnelController');
 // routes/admin.js — add
 const { getTopPathsHandler, getPathDetailHandler, getJourneyFlowHandler } = require('../controllers/journeyController');
-const { getEvents, patchEventStatus, postEvent, patchEvent, getEventDetailHandler } = require('../controllers/eventsControllerNew');
+const { getEvents, patchEventStatus, postEvent, patchEvent, getEventDetailHandler, deleteTaggedEvent } = require('../controllers/eventsControllerNew');
 
 // routes/admin.js — add
 const { getBreakdown, getStacked } = require('../controllers/revenueByPersonaController');
@@ -57,6 +57,7 @@ router.use(requireProject); // everything registered below this line requires a 
 router.get('/events', getEvents);
 router.patch('/events/:name/status', patchEventStatus);
 router.patch('/events/:name', patchEvent);
+router.delete('/events/:name', deleteTaggedEvent);
 router.post('/events', postEvent);
 router.get('/events/:name/detail', getEventDetailHandler);
 

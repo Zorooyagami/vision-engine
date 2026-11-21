@@ -39,6 +39,7 @@ const eventDefinitionSchema = new mongoose.Schema(
       default: 'other',
     },
     status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
+    deletedAt: { type: Date, default: null },
 
     // 'code'      -> fired by the site's own code via window.vision.track()
     // 'dashboard' -> fired by the SDK from `trigger`, defined in this dashboard

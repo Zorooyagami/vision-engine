@@ -1,0 +1,1141 @@
+{
+  "projectId": "vis_fixture",
+  "batch": "devday_decisions_v1",
+  "currency": "USD",
+  "range": {
+    "start": "2026-05-22T00:00:00.000Z",
+    "end": "2026-11-21T00:00:00.000Z"
+  },
+  "existingUsersSelected": 100,
+  "syntheticEvents": 12871,
+  "syntheticSessions": 1863,
+  "syntheticPurchases": 382,
+  "syntheticRevenue": 258707.44,
+  "foreignUserCount": 25,
+  "distribution": {
+    "page_view": 1863,
+    "view_item_list": 1863,
+    "select_item": 1863,
+    "product_view": 2118,
+    "add_to_cart": 910,
+    "view_cart": 910,
+    "remove_from_cart": 312,
+    "filter_applied": 301,
+    "login": 326,
+    "checkout_start": 555,
+    "shipping_details": 469,
+    "product_stock_unavailable": 100,
+    "search_performed": 414,
+    "search_result_click": 218,
+    "coupon_applied": 113,
+    "payment_failed": 68,
+    "checkout_step_error": 86,
+    "purchase": 382
+  },
+  "scenarios": {
+    "highInterest": 4,
+    "highRemove": 10,
+    "strongSeller": 11,
+    "stockIssue": 12
+  },
+  "daily": {
+    "2026-05-22": {
+      "sessions": 11,
+      "events": 65,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-05-23": {
+      "sessions": 14,
+      "events": 95,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-05-24": {
+      "sessions": 12,
+      "events": 102,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-05-25": {
+      "sessions": 13,
+      "events": 121,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-05-26": {
+      "sessions": 12,
+      "events": 85,
+      "purchases": 2,
+      "revenue": 1849.19
+    },
+    "2026-05-27": {
+      "sessions": 10,
+      "events": 76,
+      "purchases": 5,
+      "revenue": 3719.45
+    },
+    "2026-05-28": {
+      "sessions": 13,
+      "events": 104,
+      "purchases": 6,
+      "revenue": 4463.34
+    },
+    "2026-05-29": {
+      "sessions": 14,
+      "events": 90,
+      "purchases": 4,
+      "revenue": 2975.56
+    },
+    "2026-05-30": {
+      "sessions": 15,
+      "events": 112,
+      "purchases": 7,
+      "revenue": 4877.19
+    },
+    "2026-05-31": {
+      "sessions": 15,
+      "events": 106,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-06-01": {
+      "sessions": 11,
+      "events": 85,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-06-02": {
+      "sessions": 10,
+      "events": 72,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-06-03": {
+      "sessions": 11,
+      "events": 85,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-06-04": {
+      "sessions": 9,
+      "events": 51,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-06-05": {
+      "sessions": 11,
+      "events": 85,
+      "purchases": 2,
+      "revenue": 1154.93
+    },
+    "2026-06-06": {
+      "sessions": 15,
+      "events": 107,
+      "purchases": 4,
+      "revenue": 2474.32
+    },
+    "2026-06-07": {
+      "sessions": 14,
+      "events": 100,
+      "purchases": 2,
+      "revenue": 1336.94
+    },
+    "2026-06-08": {
+      "sessions": 9,
+      "events": 68,
+      "purchases": 1,
+      "revenue": 231.64
+    },
+    "2026-06-09": {
+      "sessions": 8,
+      "events": 57,
+      "purchases": 3,
+      "revenue": 1719.42
+    },
+    "2026-06-10": {
+      "sessions": 10,
+      "events": 72,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-06-11": {
+      "sessions": 9,
+      "events": 54,
+      "purchases": 1,
+      "revenue": 231.64
+    },
+    "2026-06-12": {
+      "sessions": 7,
+      "events": 51,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-06-13": {
+      "sessions": 12,
+      "events": 98,
+      "purchases": 3,
+      "revenue": 1898.82
+    },
+    "2026-06-14": {
+      "sessions": 11,
+      "events": 61,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-06-15": {
+      "sessions": 11,
+      "events": 85,
+      "purchases": 4,
+      "revenue": 3004.12
+    },
+    "2026-06-16": {
+      "sessions": 11,
+      "events": 82,
+      "purchases": 1,
+      "revenue": 231.64
+    },
+    "2026-06-17": {
+      "sessions": 9,
+      "events": 72,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-06-18": {
+      "sessions": 9,
+      "events": 71,
+      "purchases": 2,
+      "revenue": 975.53
+    },
+    "2026-06-19": {
+      "sessions": 11,
+      "events": 68,
+      "purchases": 3,
+      "revenue": 1719.42
+    },
+    "2026-06-20": {
+      "sessions": 10,
+      "events": 60,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-06-21": {
+      "sessions": 15,
+      "events": 106,
+      "purchases": 4,
+      "revenue": 2564.87
+    },
+    "2026-06-22": {
+      "sessions": 11,
+      "events": 76,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-06-23": {
+      "sessions": 11,
+      "events": 67,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-06-24": {
+      "sessions": 10,
+      "events": 68,
+      "purchases": 2,
+      "revenue": 975.53
+    },
+    "2026-06-25": {
+      "sessions": 10,
+      "events": 81,
+      "purchases": 4,
+      "revenue": 3157.77
+    },
+    "2026-06-26": {
+      "sessions": 11,
+      "events": 79,
+      "purchases": 3,
+      "revenue": 1719.42
+    },
+    "2026-06-27": {
+      "sessions": 15,
+      "events": 92,
+      "purchases": 2,
+      "revenue": 975.53
+    },
+    "2026-06-28": {
+      "sessions": 13,
+      "events": 103,
+      "purchases": 5,
+      "revenue": 3207.2
+    },
+    "2026-06-29": {
+      "sessions": 13,
+      "events": 86,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-06-30": {
+      "sessions": 12,
+      "events": 61,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-07-01": {
+      "sessions": 10,
+      "events": 77,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-07-02": {
+      "sessions": 9,
+      "events": 49,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-07-03": {
+      "sessions": 7,
+      "events": 45,
+      "purchases": 2,
+      "revenue": 975.53
+    },
+    "2026-07-04": {
+      "sessions": 10,
+      "events": 62,
+      "purchases": 3,
+      "revenue": 1898.82
+    },
+    "2026-07-05": {
+      "sessions": 13,
+      "events": 81,
+      "purchases": 2,
+      "revenue": 1157.74
+    },
+    "2026-07-06": {
+      "sessions": 10,
+      "events": 72,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-07-07": {
+      "sessions": 7,
+      "events": 41,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-07-08": {
+      "sessions": 5,
+      "events": 37,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-07-09": {
+      "sessions": 5,
+      "events": 40,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-07-10": {
+      "sessions": 9,
+      "events": 62,
+      "purchases": 2,
+      "revenue": 463.28
+    },
+    "2026-07-11": {
+      "sessions": 11,
+      "events": 85,
+      "purchases": 2,
+      "revenue": 986.54
+    },
+    "2026-07-12": {
+      "sessions": 7,
+      "events": 45,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-07-13": {
+      "sessions": 7,
+      "events": 45,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-07-14": {
+      "sessions": 6,
+      "events": 48,
+      "purchases": 1,
+      "revenue": 242.65
+    },
+    "2026-07-15": {
+      "sessions": 5,
+      "events": 25,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-07-16": {
+      "sessions": 5,
+      "events": 39,
+      "purchases": 2,
+      "revenue": 1077.09
+    },
+    "2026-07-17": {
+      "sessions": 8,
+      "events": 51,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-07-18": {
+      "sessions": 11,
+      "events": 82,
+      "purchases": 4,
+      "revenue": 3519.18
+    },
+    "2026-07-19": {
+      "sessions": 12,
+      "events": 79,
+      "purchases": 4,
+      "revenue": 2463.31
+    },
+    "2026-07-20": {
+      "sessions": 9,
+      "events": 53,
+      "purchases": 1,
+      "revenue": 231.64
+    },
+    "2026-07-21": {
+      "sessions": 11,
+      "events": 73,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-07-22": {
+      "sessions": 8,
+      "events": 59,
+      "purchases": 2,
+      "revenue": 1669.99
+    },
+    "2026-07-23": {
+      "sessions": 12,
+      "events": 85,
+      "purchases": 4,
+      "revenue": 2975.56
+    },
+    "2026-07-24": {
+      "sessions": 13,
+      "events": 81,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-07-25": {
+      "sessions": 15,
+      "events": 112,
+      "purchases": 5,
+      "revenue": 3719.45
+    },
+    "2026-07-26": {
+      "sessions": 13,
+      "events": 88,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-07-27": {
+      "sessions": 11,
+      "events": 58,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-07-28": {
+      "sessions": 9,
+      "events": 75,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-07-29": {
+      "sessions": 12,
+      "events": 69,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-07-30": {
+      "sessions": 12,
+      "events": 86,
+      "purchases": 3,
+      "revenue": 2333.23
+    },
+    "2026-07-31": {
+      "sessions": 13,
+      "events": 77,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-08-01": {
+      "sessions": 15,
+      "events": 90,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-08-02": {
+      "sessions": 11,
+      "events": 87,
+      "purchases": 4,
+      "revenue": 2975.56
+    },
+    "2026-08-03": {
+      "sessions": 11,
+      "events": 70,
+      "purchases": 2,
+      "revenue": 975.53
+    },
+    "2026-08-04": {
+      "sessions": 10,
+      "events": 67,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-08-05": {
+      "sessions": 8,
+      "events": 62,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-08-06": {
+      "sessions": 9,
+      "events": 67,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-08-07": {
+      "sessions": 9,
+      "events": 62,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-08-08": {
+      "sessions": 11,
+      "events": 78,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-08-09": {
+      "sessions": 13,
+      "events": 87,
+      "purchases": 3,
+      "revenue": 1719.42
+    },
+    "2026-08-10": {
+      "sessions": 11,
+      "events": 87,
+      "purchases": 6,
+      "revenue": 3632.06
+    },
+    "2026-08-11": {
+      "sessions": 10,
+      "events": 68,
+      "purchases": 3,
+      "revenue": 2413.88
+    },
+    "2026-08-12": {
+      "sessions": 7,
+      "events": 42,
+      "purchases": 1,
+      "revenue": 926.1
+    },
+    "2026-08-13": {
+      "sessions": 6,
+      "events": 43,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-08-14": {
+      "sessions": 11,
+      "events": 99,
+      "purchases": 4,
+      "revenue": 2642.71
+    },
+    "2026-08-15": {
+      "sessions": 14,
+      "events": 94,
+      "purchases": 4,
+      "revenue": 2463.31
+    },
+    "2026-08-16": {
+      "sessions": 14,
+      "events": 93,
+      "purchases": 3,
+      "revenue": 1719.42
+    },
+    "2026-08-17": {
+      "sessions": 14,
+      "events": 85,
+      "purchases": 2,
+      "revenue": 975.53
+    },
+    "2026-08-18": {
+      "sessions": 12,
+      "events": 75,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-08-19": {
+      "sessions": 8,
+      "events": 56,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-08-20": {
+      "sessions": 11,
+      "events": 74,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-08-21": {
+      "sessions": 12,
+      "events": 80,
+      "purchases": 3,
+      "revenue": 2593.08
+    },
+    "2026-08-22": {
+      "sessions": 15,
+      "events": 108,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-08-23": {
+      "sessions": 12,
+      "events": 83,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-08-24": {
+      "sessions": 12,
+      "events": 63,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-08-25": {
+      "sessions": 9,
+      "events": 56,
+      "purchases": 1,
+      "revenue": 1105.3
+    },
+    "2026-08-26": {
+      "sessions": 9,
+      "events": 69,
+      "purchases": 1,
+      "revenue": 231.64
+    },
+    "2026-08-27": {
+      "sessions": 8,
+      "events": 66,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-08-28": {
+      "sessions": 11,
+      "events": 88,
+      "purchases": 3,
+      "revenue": 2333.23
+    },
+    "2026-08-29": {
+      "sessions": 13,
+      "events": 79,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-08-30": {
+      "sessions": 11,
+      "events": 79,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-08-31": {
+      "sessions": 9,
+      "events": 50,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-09-01": {
+      "sessions": 8,
+      "events": 66,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-09-02": {
+      "sessions": 6,
+      "events": 32,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-09-03": {
+      "sessions": 7,
+      "events": 36,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-09-04": {
+      "sessions": 9,
+      "events": 63,
+      "purchases": 3,
+      "revenue": 1719.42
+    },
+    "2026-09-05": {
+      "sessions": 11,
+      "events": 70,
+      "purchases": 3,
+      "revenue": 2775.29
+    },
+    "2026-09-06": {
+      "sessions": 8,
+      "events": 51,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-09-07": {
+      "sessions": 8,
+      "events": 55,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-09-08": {
+      "sessions": 7,
+      "events": 49,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-09-09": {
+      "sessions": 5,
+      "events": 34,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-09-10": {
+      "sessions": 8,
+      "events": 51,
+      "purchases": 2,
+      "revenue": 1256.49
+    },
+    "2026-09-11": {
+      "sessions": 9,
+      "events": 53,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-09-12": {
+      "sessions": 7,
+      "events": 49,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-09-13": {
+      "sessions": 9,
+      "events": 62,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-09-14": {
+      "sessions": 8,
+      "events": 46,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-09-15": {
+      "sessions": 6,
+      "events": 44,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-09-16": {
+      "sessions": 8,
+      "events": 49,
+      "purchases": 2,
+      "revenue": 1154.93
+    },
+    "2026-09-17": {
+      "sessions": 6,
+      "events": 30,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-09-18": {
+      "sessions": 9,
+      "events": 73,
+      "purchases": 3,
+      "revenue": 2413.88
+    },
+    "2026-09-19": {
+      "sessions": 11,
+      "events": 67,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-09-20": {
+      "sessions": 11,
+      "events": 74,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-09-21": {
+      "sessions": 11,
+      "events": 87,
+      "purchases": 4,
+      "revenue": 2975.56
+    },
+    "2026-09-22": {
+      "sessions": 9,
+      "events": 75,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-09-23": {
+      "sessions": 8,
+      "events": 58,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-09-24": {
+      "sessions": 12,
+      "events": 85,
+      "purchases": 4,
+      "revenue": 2656.53
+    },
+    "2026-09-25": {
+      "sessions": 9,
+      "events": 73,
+      "purchases": 3,
+      "revenue": 2081.03
+    },
+    "2026-09-26": {
+      "sessions": 12,
+      "events": 84,
+      "purchases": 3,
+      "revenue": 2453.25
+    },
+    "2026-09-27": {
+      "sessions": 12,
+      "events": 78,
+      "purchases": 3,
+      "revenue": 1719.42
+    },
+    "2026-09-28": {
+      "sessions": 10,
+      "events": 66,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-09-29": {
+      "sessions": 8,
+      "events": 54,
+      "purchases": 2,
+      "revenue": 1849.19
+    },
+    "2026-09-30": {
+      "sessions": 8,
+      "events": 58,
+      "purchases": 3,
+      "revenue": 694.92
+    },
+    "2026-10-01": {
+      "sessions": 8,
+      "events": 53,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-10-02": {
+      "sessions": 12,
+      "events": 74,
+      "purchases": 2,
+      "revenue": 975.53
+    },
+    "2026-10-03": {
+      "sessions": 12,
+      "events": 87,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-10-04": {
+      "sessions": 10,
+      "events": 68,
+      "purchases": 2,
+      "revenue": 1077.09
+    },
+    "2026-10-05": {
+      "sessions": 12,
+      "events": 94,
+      "purchases": 5,
+      "revenue": 3568.61
+    },
+    "2026-10-06": {
+      "sessions": 8,
+      "events": 60,
+      "purchases": 4,
+      "revenue": 2474.32
+    },
+    "2026-10-07": {
+      "sessions": 8,
+      "events": 48,
+      "purchases": 1,
+      "revenue": 231.64
+    },
+    "2026-10-08": {
+      "sessions": 8,
+      "events": 62,
+      "purchases": 3,
+      "revenue": 2413.88
+    },
+    "2026-10-09": {
+      "sessions": 8,
+      "events": 53,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-10-10": {
+      "sessions": 12,
+      "events": 90,
+      "purchases": 4,
+      "revenue": 2642.71
+    },
+    "2026-10-11": {
+      "sessions": 12,
+      "events": 73,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-10-12": {
+      "sessions": 13,
+      "events": 95,
+      "purchases": 3,
+      "revenue": 1730.43
+    },
+    "2026-10-13": {
+      "sessions": 9,
+      "events": 61,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-10-14": {
+      "sessions": 10,
+      "events": 70,
+      "purchases": 1,
+      "revenue": 231.64
+    },
+    "2026-10-15": {
+      "sessions": 8,
+      "events": 62,
+      "purchases": 4,
+      "revenue": 2975.56
+    },
+    "2026-10-16": {
+      "sessions": 14,
+      "events": 117,
+      "purchases": 3,
+      "revenue": 2413.88
+    },
+    "2026-10-17": {
+      "sessions": 12,
+      "events": 75,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-10-18": {
+      "sessions": 16,
+      "events": 112,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-10-19": {
+      "sessions": 13,
+      "events": 97,
+      "purchases": 4,
+      "revenue": 2645.52
+    },
+    "2026-10-20": {
+      "sessions": 14,
+      "events": 97,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-10-21": {
+      "sessions": 9,
+      "events": 61,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-10-22": {
+      "sessions": 10,
+      "events": 69,
+      "purchases": 3,
+      "revenue": 1719.42
+    },
+    "2026-10-23": {
+      "sessions": 10,
+      "events": 60,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-10-24": {
+      "sessions": 15,
+      "events": 93,
+      "purchases": 3,
+      "revenue": 1719.42
+    },
+    "2026-10-25": {
+      "sessions": 12,
+      "events": 92,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-10-26": {
+      "sessions": 14,
+      "events": 106,
+      "purchases": 6,
+      "revenue": 2593.74
+    },
+    "2026-10-27": {
+      "sessions": 8,
+      "events": 54,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-10-28": {
+      "sessions": 7,
+      "events": 40,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-10-29": {
+      "sessions": 10,
+      "events": 71,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-10-30": {
+      "sessions": 11,
+      "events": 65,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-10-31": {
+      "sessions": 12,
+      "events": 87,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-11-01": {
+      "sessions": 10,
+      "events": 70,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-11-02": {
+      "sessions": 8,
+      "events": 46,
+      "purchases": 1,
+      "revenue": 411.04
+    },
+    "2026-11-03": {
+      "sessions": 5,
+      "events": 43,
+      "purchases": 3,
+      "revenue": 1730.43
+    },
+    "2026-11-04": {
+      "sessions": 5,
+      "events": 32,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-11-05": {
+      "sessions": 8,
+      "events": 60,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-11-06": {
+      "sessions": 5,
+      "events": 32,
+      "purchases": 1,
+      "revenue": 242.65
+    },
+    "2026-11-07": {
+      "sessions": 11,
+      "events": 81,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-11-08": {
+      "sessions": 11,
+      "events": 77,
+      "purchases": 3,
+      "revenue": 1730.43
+    },
+    "2026-11-09": {
+      "sessions": 7,
+      "events": 48,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-11-10": {
+      "sessions": 9,
+      "events": 71,
+      "purchases": 3,
+      "revenue": 2333.23
+    },
+    "2026-11-11": {
+      "sessions": 6,
+      "events": 31,
+      "purchases": 0,
+      "revenue": 0
+    },
+    "2026-11-12": {
+      "sessions": 5,
+      "events": 27,
+      "purchases": 1,
+      "revenue": 743.89
+    },
+    "2026-11-13": {
+      "sessions": 11,
+      "events": 84,
+      "purchases": 4,
+      "revenue": 2474.32
+    },
+    "2026-11-14": {
+      "sessions": 13,
+      "events": 80,
+      "purchases": 2,
+      "revenue": 1669.99
+    },
+    "2026-11-15": {
+      "sessions": 11,
+      "events": 78,
+      "purchases": 2,
+      "revenue": 1487.78
+    },
+    "2026-11-16": {
+      "sessions": 13,
+      "events": 88,
+      "purchases": 3,
+      "revenue": 2231.67
+    },
+    "2026-11-17": {
+      "sessions": 11,
+      "events": 77,
+      "purchases": 3,
+      "revenue": 1386.57
+    },
+    "2026-11-18": {
+      "sessions": 11,
+      "events": 63,
+      "purchases": 1,
+      "revenue": 231.64
+    },
+    "2026-11-19": {
+      "sessions": 7,
+      "events": 59,
+      "purchases": 5,
+      "revenue": 3719.45
+    },
+    "2026-11-20": {
+      "sessions": 10,
+      "events": 59,
+      "purchases": 0,
+      "revenue": 0
+    }
+  }
+}

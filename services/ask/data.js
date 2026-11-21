@@ -8,7 +8,7 @@ async function loadData(scope, comparison = true, { includeLoyal = true, signal 
   if (comparison) windows.push({ start: scope.previousStart, end: scope.previousEnd });
   const projectId = scope.projectId;
   // All executable queries are server-owned and always project scoped.
-  const eventPromise = !ordered ? Event.find({ projectId, $or: windows.map(w => ({ timestamp: { $gte: w.start, $lt: w.end } })) })
+  const eventPromise = !ordered ? Event.find({ projectId, event: { $ne: 'heatmap_move' }, $or: windows.map(w => ({ timestamp: { $gte: w.start, $lt: w.end } })) })
     .select('event sessionId userId timestamp deviceInfo.deviceType deviceInfo.geo deviceInfo.city deviceInfo.country browser trafficSource path properties.total properties.currency properties.orderId properties.products properties.productId properties.productName properties.productQuantity properties.productPrice')
     .sort({ timestamp: 1 }).limit(cap + 1).maxTimeMS(QUERY_TIMEOUT).lean()
     : Event.aggregate(require('./sessionLoader').buildSessionPipeline(scope, windows, cap)).allowDiskUse(true).option({ maxTimeMS: QUERY_TIMEOUT, ...(signal ? { signal } : {}) }).exec();
