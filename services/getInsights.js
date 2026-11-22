@@ -4,7 +4,7 @@ const { WINDOWS } = require('./insightWindows');
 async function getInsightsForWindow(projectId, window) {
   const snapshot = await InsightSnapshot.findOne({ projectId, window }).lean();
   if (!snapshot) return null;
-  return { generatedAt: snapshot.generatedAt, insights: snapshot.insights, mode: snapshot.mode || 'ai', notice: snapshot.notice || null };
+  return { generatedAt: snapshot.generatedAt, insights: snapshot.insights, mode: snapshot.mode || 'ai', notice: snapshot.notice || null, aiError: snapshot.aiError || null, suggestions: snapshot.suggestions || [] };
 }
 
 async function getAllInsights(projectId) {

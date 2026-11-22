@@ -20,9 +20,9 @@ async function generateInsights(req, res) {
     const facts = await buildFactsForWindow(projectId, selected.days);
     const result = await synthesizeInsights(facts);
     await InsightSnapshot.findOneAndUpdate({ projectId, window },
-      { projectId, window, generatedAt: new Date(), insights: result.insights, mode: result.mode, notice: result.notice || null, rawFacts: facts },
+      { projectId, window, generatedAt: new Date(), insights: result.insights, suggestions: result.suggestions || [], mode: result.mode, notice: result.notice || null, aiError: result.aiError || null, rawFacts: facts },
       { upsert: true, new: true, setDefaultsOnInsert: true });
-    jobs.set(key, { inProgress: false, error: null, window, mode: result.mode, count: result.insights.length });
+    jobs.set(key, { inProgress: false, error: null, window, mode: result.mode, aiError: result.aiError || null, count: result.insights.length });
     console.log(`[insights] project=${projectId} window=${window} completed, count=${result.insights.length}, mode=${result.mode}`);
   } catch (error) {
     console.error(`[insights] project=${projectId} window=${window} generation failed:`, error);

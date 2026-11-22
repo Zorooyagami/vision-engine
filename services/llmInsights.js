@@ -636,26 +636,54 @@ Return JSON only.
 // 10. Return JSON only.
 // `;
 
+const METRICS = [
+  'Conversion Rate', 'Revenue', 'Orders', 'Average Order Value', 'Sessions',
+  'Users', 'Bounce Rate', 'Funnel Drop-off', 'Engagement', 'Data Quality',
+];
+
+// Matches the output format the system prompt asks for: one object holding the
+// insights (up to 10, never padded) and the prioritized action suggestions.
 const insightSchema = {
-  type: 'array',
-  minItems: 10,
-  maxItems: 16,
-  items: {
-    type: 'object',
-    properties: {
-      sentiment: { type: 'string', enum: ['positive', 'negative', 'neutral'] },
-      text: { type: 'string' },
-      screen: { type: 'string', enum: ['personas', 'conversion', 'revenue', 'alerts'] },
-      decisionTitle: { type: 'string' },
-      suggestion: { type: 'string' },
-      decisionMetric: { type: 'string', enum: ['Conversion Rate', 'Revenue'] },
-      decisionPersonas: {
-        type: 'array',
-        items: { type: 'string', enum: ['loyal', 'active', 'guest', 'firsttime'] },
+  type: 'object',
+  properties: {
+    insights: {
+      type: 'array',
+      maxItems: 10,
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          sentiment: { type: 'string', enum: ['positive', 'negative', 'neutral'] },
+          text: { type: 'string' },
+          screen: { type: 'string', enum: ['personas', 'conversion', 'revenue', 'alerts'] },
+          decisionTitle: { type: 'string' },
+          decisionMetric: { type: 'string', enum: METRICS },
+          decisionPersonas: { type: 'array', items: { type: 'string', enum: ['loyal', 'active', 'guest', 'firsttime'] } },
+          suggestion: { type: 'string' },
+        },
+        required: ['id', 'sentiment', 'text', 'screen', 'decisionTitle', 'decisionMetric', 'decisionPersonas', 'suggestion'],
       },
     },
-    required: ['sentiment', 'text', 'screen', 'decisionTitle', 'suggestion', 'decisionMetric', 'decisionPersonas'],
+    suggestions: {
+      type: 'array',
+      maxItems: 2,
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          type: { type: 'string', enum: ['investigate', 'test', 'prioritize'] },
+          title: { type: 'string' },
+          relatedInsightIds: { type: 'array', items: { type: 'string' } },
+          rationale: { type: 'string' },
+          action: { type: 'string' },
+          successMetric: { type: 'string', enum: METRICS },
+          desiredDirection: { type: 'string' },
+        },
+        required: ['id', 'type', 'title', 'relatedInsightIds', 'rationale', 'action', 'successMetric', 'desiredDirection'],
+      },
+    },
   },
+  required: ['insights', 'suggestions'],
 };
 
 function evidenceInsights(facts) {
@@ -676,22 +704,134 @@ function evidenceInsights(facts) {
   if (devices.length) add(`The largest recorded device group was ${String(devices[0]._id)} with ${Number(devices[0].count)} tracked events (not distinct sessions).`, 'neutral', 'personas');
   return result;
 }
-async function synthesizeInsights(facts) {
-  if (!Number(facts?.generic?.current?.overallSessionCount || 0)) return { insights: [], mode: 'no-data' };
+// ---------------------------------------------------------------------------
+// Calling the model: timeout, retries, model fallback, readable failure reasons
+// ---------------------------------------------------------------------------
+
+const REQUEST_TIMEOUT_MS = Number(process.env.GEMINI_INSIGHTS_TIMEOUT_MS) || 90000;
+const MAX_ATTEMPTS = 3; // 1 try + 2 retries on temporary errors
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function errorStatus(error) {
+  const status = Number(error?.status ?? error?.code ?? error?.error?.code);
+  if (Number.isFinite(status)) return status;
+  const match = String(error?.message || '').match(/\b(4\d\d|5\d\d)\b/);
+  return match ? Number(match[1]) : null;
+}
+
+// Short, human-readable cause that is safe to store and show (never includes keys).
+function describeAiError(error) {
+  const message = String(error?.message || error || 'unknown error');
+  const status = errorStatus(error);
+  if (/GEMINI_API_KEY is not set/i.test(message)) return { code: 'no_api_key', reason: 'GEMINI_API_KEY is not set on the server' };
+  if (/api key not valid|API_KEY_INVALID|permission denied|PERMISSION_DENIED/i.test(message) || status === 401 || status === 403)
+    return { code: 'bad_api_key', reason: 'the Gemini API key was rejected (invalid, restricted or lacks access)' };
+  if (status === 404 || /not found|NOT_FOUND|is not supported/i.test(message))
+    return { code: 'model_not_found', reason: 'the configured Gemini model was not found' };
+  if (status === 429 || /quota|RESOURCE_EXHAUSTED|rate/i.test(message))
+    return { code: 'rate_limited', reason: 'Gemini rate limit or quota reached' };
+  if (/timeout|timed out|abort/i.test(message)) return { code: 'timeout', reason: 'the Gemini request timed out' };
+  if (/JSON|Unexpected token|not an object|no valid insights/i.test(message))
+    return { code: 'bad_response', reason: 'Gemini returned a response that could not be read' };
+  if (status && status >= 500) return { code: 'upstream_error', reason: `Gemini service error (${status})` };
+  const cleaned = message.replace(/AIza[0-9A-Za-z_-]{20,}/g, '[key]').replace(/key=[^&\s"]+/gi, 'key=[key]').slice(0, 160);
+  return { code: 'unknown', reason: cleaned };
+}
+
+const isTemporary = (error) => {
+  const status = errorStatus(error);
+  return status === 429 || (status !== null && status >= 500) || /timeout|timed out|ECONNRESET|fetch failed|overloaded|unavailable/i.test(String(error?.message || ''));
+};
+const isModelProblem = (error) => errorStatus(error) === 404 || /not found|NOT_FOUND|is not supported/i.test(String(error?.message || ''));
+
+// Models tried in order: configured one first, then a widely available fallback.
+function modelChain() {
+  const chain = [getModel()];
+  const fallback = (process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash').replace(/^models\//, '');
+  if (fallback && !chain.includes(fallback)) chain.push(fallback);
+  return chain;
+}
+
+// Accepts the object format, the older bare-array format, and ```json fences.
+function parseModelJson(text) {
+  let raw = String(text ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  if (!raw) throw new Error('empty response');
+  let parsed;
   try {
-    const response = await getAi().models.generateContent({
-      model: getModel(),
-      contents: `${SYSTEM_PROMPT}\n\nFacts:\n${JSON.stringify(facts)}`,
-      config: { responseMimeType: 'application/json', responseSchema: insightSchema },
-    });
-    const parsed = JSON.parse(response.text);
-    if (!Array.isArray(parsed)) throw new Error('AI response was not an array');
-    const insights = parsed.filter(i => i && i.text && i.sentiment && i.decisionTitle && Array.isArray(i.decisionPersonas));
-    if (!insights.length) throw new Error('AI returned no valid insights');
-    return { insights: insights.map(i => ({...i, source: 'ai'})), mode: 'ai' };
+    parsed = JSON.parse(raw);
   } catch (error) {
-    console.warn('[insights] AI unavailable; using observed metrics:', error?.message);
-    return { insights: evidenceInsights(facts), mode: 'rules', notice: 'AI generation unavailable. Showing deterministic observations calculated from tracked data.' };
+    const first = Math.min(...['{', '['].map((ch) => (raw.indexOf(ch) === -1 ? Infinity : raw.indexOf(ch))));
+    const last = Math.max(raw.lastIndexOf('}'), raw.lastIndexOf(']'));
+    if (!Number.isFinite(first) || last <= first) throw error;
+    parsed = JSON.parse(raw.slice(first, last + 1));
+  }
+  if (Array.isArray(parsed)) return { insights: parsed, suggestions: [] };
+  if (parsed && typeof parsed === 'object' && Array.isArray(parsed.insights)) return { insights: parsed.insights, suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [] };
+  throw new Error('AI response was not an object with insights');
+}
+
+function normalizeResult({ insights, suggestions }) {
+  const valid = insights
+    .filter((i) => i && i.text && i.sentiment && i.decisionTitle)
+    .slice(0, 10)
+    .map((i, index) => ({
+      ...i,
+      id: `I${index + 1}`,
+      decisionPersonas: Array.isArray(i.decisionPersonas) ? i.decisionPersonas : [],
+      source: 'ai',
+    }));
+  if (!valid.length) throw new Error('AI returned no valid insights');
+  const ids = new Set(valid.map((i) => i.id));
+  const actions = suggestions
+    .filter((s) => s && s.title && s.action)
+    .slice(0, 2)
+    .map((s, index) => ({ ...s, id: `S${index + 1}`, relatedInsightIds: (Array.isArray(s.relatedInsightIds) ? s.relatedInsightIds : []).filter((id) => ids.has(id)) }));
+  return { insights: valid, suggestions: actions };
+}
+
+async function synthesizeInsights(facts, { generate, sleep = defaultSleep } = {}) {
+  if (!Number(facts?.generic?.current?.overallSessionCount || 0)) return { insights: [], suggestions: [], mode: 'no-data' };
+
+  const call = generate || ((request) => getAi().models.generateContent(request));
+  let lastError = null;
+
+  try {
+    for (const model of modelChain()) {
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+        try {
+          const response = await call({
+            model,
+            contents: `${SYSTEM_PROMPT}\n\nFacts:\n${JSON.stringify(facts)}`,
+            config: {
+              httpOptions: { timeout: REQUEST_TIMEOUT_MS },
+              responseMimeType: 'application/json',
+              responseSchema: insightSchema,
+              maxOutputTokens: 8192,
+            },
+          });
+          const result = normalizeResult(parseModelJson(response.text));
+          if (model !== modelChain()[0]) console.warn(`[insights] used fallback model ${model}`);
+          return { ...result, mode: 'ai', model };
+        } catch (error) {
+          lastError = error;
+          console.warn(`[insights] model=${model} attempt=${attempt}/${MAX_ATTEMPTS} failed:`, error?.message);
+          if (isModelProblem(error)) break; // try the next model
+          if (!isTemporary(error) && !/JSON|Unexpected token|empty response|not an object|no valid insights/i.test(String(error?.message || ''))) throw error;
+          if (attempt < MAX_ATTEMPTS) await sleep(1000 * 2 ** (attempt - 1));
+        }
+      }
+    }
+    throw lastError || new Error('AI generation failed');
+  } catch (error) {
+    const { code, reason } = describeAiError(error);
+    console.error(`[insights] AI generation failed (${code}):`, error?.message);
+    return {
+      insights: evidenceInsights(facts),
+      suggestions: [],
+      mode: 'rules',
+      aiError: code,
+      notice: `AI generation unavailable: ${reason}. Showing deterministic observations calculated from tracked data.`,
+    };
   }
 }
-module.exports = { synthesizeInsights, evidenceInsights };
+module.exports = { synthesizeInsights, evidenceInsights, describeAiError, parseModelJson };

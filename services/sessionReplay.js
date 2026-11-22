@@ -1,5 +1,6 @@
 //services/sessionReplay.js
 const Session = require('../models/Session');
+const Event = require('../models/Event');
 const { resolveDateRange, getPersonaUserIds } = require('./filterHelpers');
 const { sessionActiveMs } = require('./replayTimeline');
 
@@ -150,6 +151,57 @@ async function listSessions({
   });
 }
 
+
+const LOCATION_FIELDS = [
+  'deviceInfo.geo.city',
+  'deviceInfo.city',
+  'deviceInfo.geo.country',
+  'deviceInfo.country',
+];
+
+/**
+ * Latest known city/country per user, read from tracked events
+ * (deviceInfo.geo.* first, then deviceInfo.city/country, the same
+ * sources the live feed uses). Always project scoped.
+ *
+ * Returns Map<userId, { city, country }>. Never throws: a failed lookup
+ * must not break the recorded-users list.
+ */
+async function lookupUserLocations({ projectId, userIds, period, customRange }) {
+  const locations = new Map();
+  if (!projectId || !userIds.length) return locations;
+
+  try {
+    const { start, end } = resolveDateRange(period, customRange);
+    const rows = await Event.aggregate([
+      {
+        $match: {
+          projectId,
+          userId: { $in: userIds },
+          timestamp: { $gte: start, $lt: end },
+          $or: LOCATION_FIELDS.map((field) => ({ [field]: { $nin: [null, ''] } })),
+        },
+      },
+      { $sort: { timestamp: -1 } },
+      {
+        $group: {
+          _id: '$userId',
+          city: { $first: { $ifNull: ['$deviceInfo.geo.city', '$deviceInfo.city'] } },
+          country: { $first: { $ifNull: ['$deviceInfo.geo.country', '$deviceInfo.country'] } },
+        },
+      },
+    ]).option({ maxTimeMS: 15000 });
+
+    for (const row of rows) {
+      locations.set(row._id, { city: row.city || null, country: row.country || null });
+    }
+  } catch (err) {
+    console.error('[record/recorded-users] location lookup failed', err.message);
+  }
+
+  return locations;
+}
+
 async function listRecordedUsers({
   projectId,
   period = '30d',
@@ -203,7 +255,20 @@ async function listRecordedUsers({
     }
   );
 
-  return Session.aggregate(pipeline);
+  const users = await Session.aggregate(pipeline);
+
+  const locations = await lookupUserLocations({
+    projectId,
+    userIds: users.map((user) => user.userId).filter(Boolean),
+    period,
+    customRange,
+  });
+
+  return users.map((user) => ({
+    ...user,
+    city: locations.get(user.userId)?.city || null,
+    country: locations.get(user.userId)?.country || null,
+  }));
 }
 
 module.exports = { listSessions, listRecordedUsers, buildSessionMatch };

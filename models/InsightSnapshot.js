@@ -12,6 +12,8 @@ const InsightSnapshotSchema = new mongoose.Schema({
   rawFacts: { type: mongoose.Schema.Types.Mixed },
   mode: { type: String, enum: ['ai', 'rules', 'no-data'], default: 'ai' },
   notice: String,
+  aiError: String, // short code when AI generation fell back to rules (e.g. bad_api_key)
+  suggestions: [{ type: mongoose.Schema.Types.Mixed }],
 });
 
 // Keep only the latest generated snapshot for each project/window pair.
