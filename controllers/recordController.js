@@ -4,6 +4,7 @@ const Session = require('../models/Session');
 const User = require('../models/User');
 const Project = require('../models/Project');
 const { publishRecording } = require('../services/liveService');
+const { chunkSummary } = require('../services/replayTimeline');
 const ALLOW_LEGACY_USER_FALLBACK = process.env.ALLOW_LEGACY_USER_FALLBACK === 'true';
 
 function decompressAsync(buffer) {
@@ -38,11 +39,19 @@ async function ingestSession(req, res) {
     }
 
     const receivedAt = new Date();
+    const summary = chunkSummary(events) || {};
     await Session.updateOne(
       { projectId: req.projectId, sessionId },
       {
         $push: {
-          chunks: { page: page || '/', data: compressed, receivedAt },
+          chunks: {
+            page: page || '/',
+            data: compressed,
+            receivedAt,
+            spans: summary.spans,
+            firstTs: summary.firstTs,
+            lastTs: summary.lastTs,
+          },
         },
         $setOnInsert: { projectId: req.projectId, sessionId, userId },
       },
@@ -157,6 +166,7 @@ async function getSessionReplay(req, res) {
       })
     }
 
+    const missingSummaries = {}
     const eventsPerChunk = await Promise.all(
       session.chunks.map(
         async (chunk, index) => {
@@ -191,11 +201,24 @@ async function getSessionReplay(req, res) {
                 )
               )
 
-            return Array.isArray(
+            const chunkEvents = Array.isArray(
               payload.events
             )
               ? payload.events
               : []
+
+            // Opening an older recording repairs its list-view duration:
+            // store the activity summary it was recorded without.
+            if (!Array.isArray(chunk.spans)) {
+              const s = chunkSummary(chunkEvents)
+              if (s) {
+                missingSummaries[`chunks.${index}.spans`] = s.spans
+                missingSummaries[`chunks.${index}.firstTs`] = s.firstTs
+                missingSummaries[`chunks.${index}.lastTs`] = s.lastTs
+              }
+            }
+
+            return chunkEvents
           } catch (err) {
             console.error(
               `[record/replay] failed to decode chunk ${index}:`,
@@ -207,6 +230,14 @@ async function getSessionReplay(req, res) {
         }
       )
     )
+
+    if (Object.keys(missingSummaries).length) {
+      Session.updateOne(
+        { projectId: req.projectId, sessionId: req.params.sessionId },
+        { $set: missingSummaries },
+        { timestamps: false }
+      ).catch((err) => console.warn('[record/replay] summary backfill failed:', err.message))
+    }
 
     const events = eventsPerChunk
       .flat()

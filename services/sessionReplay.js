@@ -1,11 +1,19 @@
 //services/sessionReplay.js
 const Session = require('../models/Session');
 const { resolveDateRange, getPersonaUserIds } = require('./filterHelpers');
+const { sessionActiveMs } = require('./replayTimeline');
 
 const ALLOW_LEGACY_USER_FALLBACK = process.env.ALLOW_LEGACY_USER_FALLBACK === 'true';
 
 function computeDuration(chunks) {
   if (!chunks?.length) return null;
+  // Preferred: active time (idle gaps removed), as stored at ingest.
+  const activeMs = sessionActiveMs(chunks);
+  if (activeMs !== null) {
+    const secs = Math.max(0, Math.round(activeMs / 1000));
+    return { totalSecs: secs, label: `${Math.floor(secs / 60)}m ${secs % 60}s` };
+  }
+  // Older recordings: wall-clock span between uploads (can include idle time).
   const times = chunks
     .map((chunk) => new Date(chunk.receivedAt).getTime())
     .filter(Number.isFinite);
@@ -100,6 +108,9 @@ async function listSessions({
         updatedAt: 1,
         'chunks.page': 1,
         'chunks.receivedAt': 1,
+        'chunks.spans': 1,
+        'chunks.firstTs': 1,
+        'chunks.lastTs': 1,
       },
     },
     userLookupStage(),

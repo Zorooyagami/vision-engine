@@ -6,6 +6,11 @@ const chunkSchema = new mongoose.Schema(
     page: { type: String, required: true },
     data: { type: Buffer, required: true },
     receivedAt: { type: Date, default: Date.now },
+    // Per-chunk activity stats computed at ingest (merged [start,end] spans of activity) so the
+    // list view can show active duration without decompressing anything.
+    spans: { type: [[Number]], default: undefined },
+    firstTs: { type: Number },
+    lastTs: { type: Number },
   },
   { _id: false }
 );
