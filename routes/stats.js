@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireProject } = require('../middleware/requireProject');
+const { responseCache } = require('../middleware/responseCache');
 const {
   funnel,
   personas,
@@ -15,6 +16,7 @@ const {
 } = require('../controllers/statsController');
 
 router.use(requireProject);
+router.use(responseCache({ ttlMs: 30000 }));
 router.get('/funnel', funnel);
 router.get('/personas', personas);
 router.get('/abandonment/funnel', getCartAbandonmentFunnel);

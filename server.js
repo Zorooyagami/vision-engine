@@ -21,6 +21,9 @@ const corsOptions = {
     'X-Project-Id',
   ],
   optionsSuccessStatus: 204,
+  // Let browsers remember the OPTIONS preflight (otherwise Chrome re-asks every 5s),
+  // which removes an extra round trip from many dashboard requests.
+  maxAge: 7200,
 };
 
 // Must be registered before all routes

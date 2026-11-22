@@ -13,9 +13,40 @@ function extractProjectId(req) {
   return '';
 }
 
+// Every request (dashboard calls, SDK ingest, the SDK's 30s config poll) needs the
+// project. Reading it from MongoDB each time costs one full database round trip
+// before any real work starts, so keep it in memory briefly. projectService
+// calls invalidateProject() on update/delete, so changes apply immediately.
+const PROJECT_TTL_MS = Number(process.env.PROJECT_CACHE_TTL_MS ?? 30000);
+const projectCache = new Map(); // projectId -> { project, expires }
+const projectInflight = new Map(); // projectId -> Promise
+
+function invalidateProject(projectId) {
+  if (projectId) projectCache.delete(String(projectId));
+  else projectCache.clear();
+}
+
 async function loadProject(projectId) {
   if (!projectId) return null;
-  return Project.findOne({ projectId, status: 'active' }).lean();
+  if (PROJECT_TTL_MS <= 0) return Project.findOne({ projectId, status: 'active' }).lean();
+
+  const hit = projectCache.get(projectId);
+  if (hit && hit.expires > Date.now()) return hit.project;
+
+  // Concurrent requests for the same project share one lookup.
+  if (projectInflight.has(projectId)) return projectInflight.get(projectId);
+  const lookup = Project.findOne({ projectId, status: 'active' })
+    .lean()
+    .then((project) => {
+      if (project) {
+        if (projectCache.size > 500) projectCache.delete(projectCache.keys().next().value);
+        projectCache.set(projectId, { project, expires: Date.now() + PROJECT_TTL_MS });
+      }
+      return project;
+    })
+    .finally(() => projectInflight.delete(projectId));
+  projectInflight.set(projectId, lookup);
+  return lookup;
 }
 
 async function requireProject(req, res, next) {
@@ -52,4 +83,4 @@ async function optionalProject(req, res, next) {
   }
 }
 
-module.exports = { requireProject, optionalProject, extractProjectId };
+module.exports = { requireProject, optionalProject, extractProjectId, invalidateProject };

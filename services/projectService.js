@@ -5,6 +5,7 @@ const Session = require('../models/Session')
 const EventDefinition = require('../models/EventDefinition')
 const InsightSnapshot = require('../models/InsightSnapshot')
 const User = require('../models/User')
+const { invalidateProject } = require('../middleware/requireProject')
 
 /* -------------------------------------------------------
    PROJECT ID
@@ -370,6 +371,7 @@ async function updateProject(
   }
 
   await project.save()
+  invalidateProject(projectId)
 
   return project
 }
@@ -389,6 +391,7 @@ async function deleteProject(
   // left behind.
   project.status = 'disabled'
   await project.save()
+  invalidateProject(projectId)
 
   await Promise.all([
     Event.deleteMany({ projectId }),
@@ -399,6 +402,7 @@ async function deleteProject(
   ])
 
   await Project.deleteOne({ _id: project._id })
+  invalidateProject(projectId)
   return project
 }
 
