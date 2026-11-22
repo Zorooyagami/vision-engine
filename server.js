@@ -36,9 +36,51 @@ app.use(compression({
 // express.raw() inside the router, so it must be mounted BEFORE express.json().
 app.use('/api/record', require('./routes/record'))
 
+// Per-request timing: logs slow requests and exposes the time to the browser
+// (Network tab -> request -> Timing / "Server-Timing" header).
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint()
+  const origWriteHead = res.writeHead
+  res.writeHead = function (...args) {
+    const ms = Number(process.hrtime.bigint() - start) / 1e6
+    if (!res.headersSent) res.setHeader('Server-Timing', `app;dur=${ms.toFixed(1)}`)
+    return origWriteHead.apply(this, args)
+  }
+  res.on('finish', () => {
+    const ms = Number(process.hrtime.bigint() - start) / 1e6
+    if (ms > 500) console.warn(`[slow] ${req.method} ${req.originalUrl.split('?')[0]} ${res.statusCode} ${ms.toFixed(0)}ms`)
+  })
+  next()
+})
+
 app.use(express.json({ limit: '2mb' }))
 
 app.get('/health', (_req, res) => res.json({ ok: true }))
+
+// Measures server -> MongoDB round-trip time. If "avgPingMs" is high (e.g. >50),
+// the server and database are far apart; if it is low, the slowness is in the
+// queries or the network between the browser and the server.
+app.get('/health/db', async (_req, res) => {
+  try {
+    const mongoose = require('mongoose')
+    const admin = mongoose.connection.db.admin()
+    const times = []
+    for (let i = 0; i < 5; i += 1) {
+      const t = process.hrtime.bigint()
+      await admin.ping()
+      times.push(Number(process.hrtime.bigint() - t) / 1e6)
+    }
+    const avg = times.reduce((a, b) => a + b, 0) / times.length
+    res.json({
+      avgPingMs: Math.round(avg),
+      pingsMs: times.map((t) => Math.round(t)),
+      host: mongoose.connection.host,
+      railwayRegion: process.env.RAILWAY_REPLICA_REGION || process.env.RAILWAY_REGION || null,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
 
 app.use('/api/auth', require('./routes/auth'))
 app.use('/api/behavior', require('./routes/behavior'))
