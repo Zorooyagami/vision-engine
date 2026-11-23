@@ -10,6 +10,45 @@ const LABELS = {cart_updated:'Cart changed',checkout_started:'Checkout started',
 const time = e => +new Date(e.timestamp)
 const order = (a,b) => time(a)-time(b) || String(a.eventId).localeCompare(String(b.eventId))
 
+// An analytics `purchase` and a behavioral `purchase_completed` can describe
+// the same checkout. Use order IDs whenever present; only use a narrowly
+// constrained session/time fallback when at least one ID is missing.
+const normalizeOrderId = value => value == null ? '' : String(value).trim()
+function uniquePurchases(purchases) {
+  const parent = purchases.map((_, i) => i)
+  const root = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i] } return i }
+  const join = (a, b) => { const ra = root(a), rb = root(b); if (ra !== rb) parent[rb] = ra }
+  const byOrder = new Map()
+  purchases.forEach((p, i) => {
+    if (!p.orderId) return
+    if (byOrder.has(p.orderId)) join(i, byOrder.get(p.orderId))
+    else byOrder.set(p.orderId, i)
+  })
+
+  // Fallback only for a single unambiguous cross-stream match in the same
+  // session within two seconds. Never merge two different known order IDs.
+  // Never merge different purchases solely because they share a session.
+  const candidates = purchases.map((p, i) => purchases.map((q, j) => ({q, j}))
+    .filter(({q, j}) => i !== j && p.source !== q.source &&
+      p.sessionId && p.sessionId === q.sessionId &&
+      (!p.orderId || !q.orderId) &&
+      Math.abs(p.timestamp - q.timestamp) <= 2000)
+    .map(({j}) => j))
+  let fallbackMatches = 0
+  candidates.forEach((matches, i) => {
+    if (matches.length !== 1) return
+    const j = matches[0]
+    if (candidates[j].length !== 1 || candidates[j][0] !== i) return
+    if (root(i) !== root(j)) { join(i, j); fallbackMatches++ }
+  })
+  return {
+    count: new Set(purchases.map((_, i) => root(i))).size,
+    rawCount: purchases.length,
+    duplicatesRemoved: purchases.length - new Set(purchases.map((_, i) => root(i))).size,
+    fallbackMatches,
+  }
+}
+
 function investigateCart(events, { now = new Date(), limit = 8, offset = 0, status = 'all', analyticsEvents = [] } = {}) {
   const seen = new Set()
   const normalized = (events || []).filter(e => {
@@ -26,12 +65,13 @@ function investigateCart(events, { now = new Date(), limit = 8, offset = 0, stat
   // recorded (older SDK, late SDK startup, or a cart created in another session).
   const purchaseSessions = new Set()
   const purchaseOrderKeys = new Set()
-  let purchaseEvents = 0
+  const purchaseOccurrences = []
   let behaviorPurchaseEvents = 0
   let analyticsPurchaseEvents = 0
   for (const e of normalized) {
     if (e.kind !== 'purchase_completed') continue
-    purchaseEvents++; behaviorPurchaseEvents++
+    behaviorPurchaseEvents++
+    purchaseOccurrences.push({source:'behavior',orderId:normalizeOrderId(e.data?.orderId),sessionId:e.sessionId,timestamp:time(e)})
     purchaseSessions.add(e.sessionId)
     if (e.data?.orderId) purchaseOrderKeys.add(String(e.data.orderId))
   }
@@ -72,11 +112,16 @@ function investigateCart(events, { now = new Date(), limit = 8, offset = 0, stat
     legacyStreams.get(e.sessionId).push(e)
     if (LEGACY_CART.has(e.event)) analyticsCartEvents++
     if (LEGACY_PURCHASE.has(e.event)) {
-      purchaseEvents++; analyticsPurchaseEvents++
+      analyticsPurchaseEvents++
+      purchaseOccurrences.push({source:'analytics',orderId:normalizeOrderId(e.properties?.orderId),sessionId:e.sessionId,timestamp:time(e)})
       purchaseSessions.add(e.sessionId)
       if (e.properties?.orderId) purchaseOrderKeys.add(String(e.properties.orderId))
     }
   }
+  const purchaseTotals = uniquePurchases(purchaseOccurrences)
+  // Match Explore > Events: headline Purchase Events counts only standard analytics `purchase` records.
+  // Behavioral `purchase_completed` signals are still used for cart-journey evidence.
+  const purchaseEvents = analyticsPurchaseEvents
   let overlappingSessions = 0
   for (const [sessionId, streamUnsorted] of legacyStreams) {
     const stream = streamUnsorted.sort((a,b) => time(a)-time(b))
@@ -108,6 +153,6 @@ function investigateCart(events, { now = new Date(), limit = 8, offset = 0, stat
   const safeStatus = validStatuses.has(status) ? status : 'all'
   const filteredCases = safeStatus === 'all' ? cases : cases.filter(c => c.status === safeStatus)
   counts.purchaseEventOccurrences = purchaseEvents
-  return {counts,cases:filteredCases.slice(offset,offset+limit),totalCases:cases.length,filteredCases:filteredCases.length,diagnostics:{behaviorEventsScanned:normalized.length,analyticsEventsScanned:legacyIds.size,analyticsCartEvents,overlappingSessions,behaviorCartSessions:strictSessions.size,analyticsOnlyCartSessions:cases.length-strictSessions.size,behaviorPurchaseEvents,analyticsPurchaseEvents,purchaseEventOccurrences:purchaseEvents,distinctOrderIdsWithPurchaseEvent:purchaseOrderKeys.size},definitions:{allTrackedPurchaseSessions:'Unique session IDs containing a purchase_completed or purchase event anywhere in the selected period, even when no preceding cart event is available. Not verified orders.',purchaseWithoutMatchedCart:'Purchase sessions without a matched cart-to-purchase journey. May be due to missing earlier cart telemetry, different sessions, or incomplete event coverage.',purchaseRecorded:'Purchase events found after a qualifying cart event in the same session (matching cart ID when present). Not all purchase events or verified payments.',cartSessions:'Distinct sessions with a positive-item cart update, or a legacy add_to_cart event. Legacy events have no verified cart ID.',checkoutObserved:'Checkout recorded after a cart event in the same session; when a cart ID exists, checkout must match that cart.',cartNoCheckout:'No checkout event found after cart activity in the observed session; not proof of abandonment.',checkoutNoPurchase:'Checkout observed without a subsequent tracked purchase event in the session.',cartEmptied:'An identified cart was emptied without a recorded purchase.',frictionSessions:'Sessions with explicitly captured friction after cart activity.',replay:'Replay is offered only when a recording is stored. Historical analytics-only cases can have recordings.',source:'Behavior cases have verified cart identity. Analytics-only cases have a recorded add_to_cart event but no cart ID; their checkout and purchase steps are session-level observations, not confirmed same-cart outcomes.'}}
+  return {counts,cases:filteredCases.slice(offset,offset+limit),totalCases:cases.length,filteredCases:filteredCases.length,diagnostics:{behaviorEventsScanned:normalized.length,analyticsEventsScanned:legacyIds.size,analyticsCartEvents,overlappingSessions,behaviorCartSessions:strictSessions.size,analyticsOnlyCartSessions:cases.length-strictSessions.size,behaviorPurchaseEvents,analyticsPurchaseEvents,purchaseEventOccurrences:purchaseEvents,rawPurchaseEventOccurrences:purchaseTotals.rawCount,distinctPurchaseSignalsAcrossStreams:purchaseTotals.count,duplicatePurchaseSignals:purchaseTotals.duplicatesRemoved,purchaseFallbackMatches:purchaseTotals.fallbackMatches,distinctOrderIdsWithPurchaseEvent:purchaseOrderKeys.size},definitions:{purchaseEventOccurrences:'Count of standard analytics purchase events in the selected reporting window, matching Explore > Events. Behavioral purchase_completed signals are used for journey evidence but not added to this total; not verified payments.',allTrackedPurchaseSessions:'Unique session IDs containing a purchase_completed or purchase event anywhere in the selected period, even when no preceding cart event is available. Not verified orders.',purchaseWithoutMatchedCart:'Purchase sessions without a matched cart-to-purchase journey. May be due to missing earlier cart telemetry, different sessions, or incomplete event coverage.',purchaseRecorded:'Purchase events found after a qualifying cart event in the same session (matching cart ID when present). Not all purchase events or verified payments.',cartSessions:'Distinct sessions with a positive-item cart update, or a legacy add_to_cart event. Legacy events have no verified cart ID.',checkoutObserved:'Checkout recorded after a cart event in the same session; when a cart ID exists, checkout must match that cart.',cartNoCheckout:'No checkout event found after cart activity in the observed session; not proof of abandonment.',checkoutNoPurchase:'Checkout observed without a subsequent tracked purchase event in the session.',cartEmptied:'An identified cart was emptied without a recorded purchase.',frictionSessions:'Sessions with explicitly captured friction after cart activity.',replay:'Replay is offered only when a recording is stored. Historical analytics-only cases can have recordings.',source:'Behavior cases have verified cart identity. Analytics-only cases have a recorded add_to_cart event but no cart ID; their checkout and purchase steps are session-level observations, not confirmed same-cart outcomes.'}}
 }
 module.exports={investigateCart}
