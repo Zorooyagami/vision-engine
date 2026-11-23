@@ -6,7 +6,7 @@ test('no fabricated cases or counts',()=>{const r=investigateCart([]);assert.equ
 test('requires positive cart activity and labels missing checkout carefully',()=>{const r=investigateCart([ev('a','page_view',0),ev('a','cart_updated',1,{cartId:'c',itemCount:1}),ev('a','validation_failure',2,{code:'native_validation'})],{now:new Date(+base+3600000)});assert.equal(r.counts.cartSessions,1);assert.equal(r.counts.frictionSessions,1);assert.equal(r.cases[0].status,'cart_no_checkout')});
 test('checkout and purchase must match cart and session',()=>{const events=[ev('s','cart_updated',0,{cartId:'a',itemCount:2}),ev('s','checkout_started',1,{cartId:'a',itemCount:2}),ev('s','purchase_completed',2,{cartId:'b',itemCount:2}),ev('other','purchase_completed',3,{cartId:'a',itemCount:2})];const r=investigateCart(events,{now:new Date(+base+3600000)});assert.equal(r.cases[0].status,'checkout_no_purchase');assert.equal(r.counts.purchaseRecorded,0)});
 test('duplicate eventIds do not double count timeline',()=>{const e=ev('s','cart_updated',1,{cartId:'a',itemCount:1});const r=investigateCart([e,e],{now:new Date(+base+3600000)});assert.equal(r.cases[0].timeline.length,1)});
-test('purchase event recorded is not counted as payment verification',()=>{const r=investigateCart([ev('s','cart_updated',1,{cartId:'a',itemCount:1}),ev('s','purchase_completed',2,{cartId:'a',itemCount:1})],{now:new Date(+base+3600000)});assert.equal(r.counts.purchaseRecorded,1);assert.equal(r.cases[0].status,'purchase_recorded')});
+test('behavior-only purchase does not count as canonical purchase',()=>{const r=investigateCart([ev('s','cart_updated',1,{cartId:'a',itemCount:1}),ev('s','purchase_completed',2,{cartId:'a',itemCount:1})],{now:new Date(+base+3600000)});assert.equal(r.counts.purchaseRecorded,0);assert.equal(r.counts.allTrackedPurchaseSessions,0);assert.equal(r.counts.purchaseEventOccurrences,0);assert.equal(r.cases[0].status,'cart_no_checkout')});
 const legacy=(session,event,minute,id)=>({_id:id,sessionId:session,event,timestamp:new Date(+base+minute*60000).toISOString(),path:'/cart',deviceInfo:{deviceType:'Mobile'}})
 test('historical standard add_to_cart events become explicit analytics-only cases',()=>{
  const a=[legacy('old','add_to_cart',1,'l1'),legacy('old','checkout_start',2,'l2'),legacy('old','purchase',3,'l3')]
@@ -34,16 +34,18 @@ test('purchase sessions without cart history remain visible in total purchase co
  const a=[legacy('legacyPurchase','purchase',3,'legacy-purchase')]
  const r=investigateCart(b,{now:new Date(+base+3600000),analyticsEvents:a})
  assert.equal(r.counts.cartSessions,1)
- assert.equal(r.counts.purchaseRecorded,1)
- assert.equal(r.counts.allTrackedPurchaseSessions,3)
- assert.equal(r.counts.purchaseWithoutMatchedCart,2)
+ assert.equal(r.counts.purchaseRecorded,0)
+ assert.equal(r.counts.allTrackedPurchaseSessions,1)
+ assert.equal(r.counts.purchaseWithoutMatchedCart,1)
 })
 test('duplicate purchase reporting across behavior and analytics does not inflate unique purchase sessions',()=>{
  const b=[ev('same','cart_updated',1,{cartId:'c',itemCount:1}),ev('same','purchase_completed',2,{cartId:'c',orderId:'order-one'})]
  const a=[legacy('same','purchase',2,'l-purchase')]
  const r=investigateCart(b,{now:new Date(+base+3600000),analyticsEvents:a})
  assert.equal(r.counts.allTrackedPurchaseSessions,1)
- assert.equal(r.diagnostics.purchaseEventOccurrences,2)
+ assert.equal(r.diagnostics.purchaseEventOccurrences,1)
+ assert.equal(r.counts.purchaseEventOccurrences,1)
+ assert.equal(r.counts.purchaseRecorded,1)
  assert.equal(r.counts.purchaseWithoutMatchedCart,0)
 })
 test('paginated investigation navigates older sessions without changing totals',()=>{
@@ -64,3 +66,50 @@ test('status filter applies to all cases before pagination',()=>{
  assert.equal(r.cases[0].sessionId,'p')
  assert.equal(r.counts.purchaseEventOccurrences,1)
 })
+
+test('three purchase KPIs derive only from analytics purchases, even with many behavioral purchase signals',()=>{
+ const b=[
+  ev('s1','cart_updated',1,{cartId:'c1',itemCount:2}),
+  ev('s1','purchase_completed',2,{cartId:'c1',orderId:'o1'}),
+  ev('s2','purchase_completed',2,{cartId:'c2',orderId:'o2'}),
+  ev('s3','cart_updated',1,{cartId:'c3',itemCount:1}),
+  ev('s3','purchase_completed',2,{cartId:'c3',orderId:'o3'})
+ ];
+ const a=[legacy('s1','purchase',3,'a1'),legacy('s2','purchase',3,'a2'),legacy('s4','purchase',3,'a3')];
+ const r=investigateCart(b,{now:new Date(+base+3600000),analyticsEvents:a});
+ assert.equal(r.counts.purchaseEventOccurrences,3);
+ assert.equal(r.counts.allTrackedPurchaseSessions,3);
+ assert.equal(r.counts.purchaseRecorded,1);
+ assert.equal(r.cases.find(c=>c.sessionId==='s3').purchaseObserved,false);
+});
+test('two analytics purchases after one cart are two purchase events but only one session',()=>{
+ const a=[legacy('s','add_to_cart',1,'cart'),legacy('s','purchase',2,'purchase1'),legacy('s','purchase',3,'purchase2')];
+ const r=investigateCart([],{now:new Date(+base+3600000),analyticsEvents:a});
+ assert.equal(r.counts.purchaseEventOccurrences,2);
+ assert.equal(r.counts.allTrackedPurchaseSessions,1);
+ assert.equal(r.counts.purchaseRecorded,2);
+ assert.equal(r.counts.cartSessions,1);
+});
+test('analytics purchases before cart do not qualify as purchases after cart',()=>{
+ const a=[legacy('s','purchase',1,'purchase1'),legacy('s','add_to_cart',2,'cart')];
+ const r=investigateCart([],{now:new Date(+base+3600000),analyticsEvents:a});
+ assert.equal(r.counts.purchaseEventOccurrences,1);
+ assert.equal(r.counts.allTrackedPurchaseSessions,1);
+ assert.equal(r.counts.purchaseRecorded,0);
+ assert.equal(r.counts.purchaseWithoutMatchedCart,1);
+});
+test('purchase without session still contributes to purchase events, not sessions or journeys',()=>{
+ const a=[{...legacy(null,'purchase',1,'missing-session'),sessionId:null}];
+ const r=investigateCart([],{now:new Date(+base+3600000),analyticsEvents:a});
+ assert.equal(r.counts.purchaseEventOccurrences,1);
+ assert.equal(r.counts.allTrackedPurchaseSessions,0);
+ assert.equal(r.counts.purchaseRecorded,0);
+});
+test('analytics cart ID mismatch does not qualify behavior cart as purchased',()=>{
+ const b=[ev('s','cart_updated',1,{cartId:'cart-a',itemCount:1})];
+ const a=[{...legacy('s','purchase',2,'p1'),properties:{cartId:'cart-b'}}];
+ const r=investigateCart(b,{now:new Date(+base+3600000),analyticsEvents:a});
+ assert.equal(r.counts.purchaseEventOccurrences,1);
+ assert.equal(r.counts.purchaseRecorded,0);
+ assert.equal(r.cases[0].purchaseObserved,false);
+});
