@@ -40,23 +40,28 @@ async function ingestSession(req, res) {
 
     const receivedAt = new Date();
     const summary = chunkSummary(events) || {};
-    await Session.updateOne(
-      { projectId: req.projectId, sessionId },
-      {
-        $push: {
-          chunks: {
-            page: page || '/',
-            data: compressed,
-            receivedAt,
-            spans: summary.spans,
-            firstTs: summary.firstTs,
-            lastTs: summary.lastTs,
-          },
+    // A visitor starts as a guest and may log in mid-session (the session id is kept).
+    // `userId` used to be written only when the session document was first created, so a
+    // login afterwards never reached it and the recording stayed under the guest id.
+    // A known user id now upgrades a guest session; a guest id never replaces a known one.
+    const isKnownUser = !!userId && !String(userId).startsWith('guest_') && payload.isGuest !== true;
+    const update = {
+      $push: {
+        chunks: {
+          page: page || '/',
+          data: compressed,
+          receivedAt,
+          spans: summary.spans,
+          firstTs: summary.firstTs,
+          lastTs: summary.lastTs,
         },
-        $setOnInsert: { projectId: req.projectId, sessionId, userId },
       },
-      { upsert: true }
-    );
+      $setOnInsert: { projectId: req.projectId, sessionId },
+    };
+    if (isKnownUser) update.$set = { userId };
+    else update.$setOnInsert.userId = userId;
+
+    await Session.updateOne({ projectId: req.projectId, sessionId }, update, { upsert: true });
        publishRecording({ projectId: req.projectId, sessionId, userId });
     await Project.updateOne(
       { projectId: req.projectId },
