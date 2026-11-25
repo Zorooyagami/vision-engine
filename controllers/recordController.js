@@ -40,51 +40,24 @@ async function ingestSession(req, res) {
 
     const receivedAt = new Date();
     const summary = chunkSummary(events) || {};
-    // await Session.updateOne(
-    //   { projectId: req.projectId, sessionId },
-    //   {
-    //     $push: {
-    //       chunks: {
-    //         page: page || '/',
-    //         data: compressed,
-    //         receivedAt,
-    //         spans: summary.spans,
-    //         firstTs: summary.firstTs,
-    //         lastTs: summary.lastTs,
-    //       },
-    //     },
-    //     $setOnInsert: { projectId: req.projectId, sessionId, userId },
-    //   },
-    //   { upsert: true }
-    // );
     await Session.updateOne(
-  { projectId: req.projectId, sessionId },
-  {
-    $push: {
-      chunks: {
-        page: page || '/',
-        data: compressed,
-        receivedAt,
-        spans: summary.spans,
-        firstTs: summary.firstTs,
-        lastTs: summary.lastTs,
+      { projectId: req.projectId, sessionId },
+      {
+        $push: {
+          chunks: {
+            page: page || '/',
+            data: compressed,
+            receivedAt,
+            spans: summary.spans,
+            firstTs: summary.firstTs,
+            lastTs: summary.lastTs,
+          },
+        },
+        $setOnInsert: { projectId: req.projectId, sessionId, userId },
       },
-    },
-    $setOnInsert: {
-      projectId: req.projectId,
-      sessionId,
-      userId
-    },
-  },
-  { upsert: true }
-);
-
-publishRecording({
-  projectId: req.projectId,
-  sessionId,
-  userId
-});   
-    publishRecording({ projectId: req.projectId, sessionId, userId });
+      { upsert: true }
+    );
+       publishRecording({ projectId: req.projectId, sessionId, userId });
     await Project.updateOne(
       { projectId: req.projectId },
       { $max: { lastEventAt: receivedAt } }
